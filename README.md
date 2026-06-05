@@ -72,3 +72,4 @@ To preview the app locally before deploying:
 npm install
 npm start
 ```
+
