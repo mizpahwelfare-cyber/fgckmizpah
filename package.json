@@ -1,0 +1,13 @@
+{
+  "name": "mizpah-online",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "npx http-server . -p 8000",
+    "deploy": "npx gh-pages -d ."
+  },
+  "devDependencies": {
+    "gh-pages": "^5.0.0",
+    "http-server": "^14.2.1"
+  }
+}

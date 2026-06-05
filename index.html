@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MIZPAH ONLINE Church System</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+  <!-- Login Screen -->
+  <div id="loginScreen" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; z-index: 2000;">
+    <div style="background: white; border-radius: 12px; padding: 40px; max-width: 400px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+      <h2 style="margin: 0 0 30px 0; text-align: center; color: #333;">MIZPAH Church System</h2>
+      
+      <form id="loginForm" style="display: flex; flex-direction: column; gap: 16px;">
+        <div>
+          <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">User Type</label>
+          <select id="loginUserType" style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1rem;">
+            <option value="">-- Select User Type --</option>
+            <option value="pastor">Pastor</option>
+            <option value="elder">Elder</option>
+            <option value="member">Member</option>
+          </select>
+        </div>
+
+        <div id="memberLoginFields" style="display: none;">
+          <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Membership Number</label>
+          <input type="text" id="loginMembershipNo" placeholder="e.g., MIZ-26/001" style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1rem; box-sizing: border-box;" />
+        </div>
+
+        <div id="staffLoginFields" style="display: none;">
+          <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Password</label>
+          <input type="password" id="loginPassword" placeholder="Enter password" style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1rem; box-sizing: border-box;" />
+        </div>
+
+        <div id="memberPasswordFields" style="display: none;">
+          <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Last 3 Digits of Membership No.</label>
+          <input type="password" id="loginMemberPassword" placeholder="e.g., 001" style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1rem; box-sizing: border-box;" maxlength="3" />
+        </div>
+
+        <div id="loginMessage" style="padding: 12px; border-radius: 6px; text-align: center; display: none; font-weight: 600;"></div>
+
+        <button type="submit" style="padding: 12px; background: #667eea; color: white; border: none; border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background 0.3s;">Login</button>
+      </form>
+    </div>
+  </div>
+
+  <main class="container" id="appContainer" style="display: none;">
+    <h1>FULL GOSPEL CHURCHES OF KENYA - MIZPAH</h1>
+
+    <div class="layout">
+      <aside class="sidebar card">
+        <h2>Dashboard</h2>
+        
+        <!-- Member View -->
+        <div id="memberViewContainer" style="display: none;">
+          <div style="background: #f8fafc; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+            <h3 style="margin: 0 0 12px 0; color: var(--text);">Your Profile</h3>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <div><strong>Name:</strong> <span id="memberViewName"></span></div>
+              <div><strong>Membership No.:</strong> <span id="memberViewMembershipNo"></span></div>
+            </div>
+          </div>
+
+          <div style="background: #f8fafc; padding: 16px; border-radius: 8px;">
+            <h3 style="margin: 0 0 12px 0; color: var(--text);">Your Contributions</h3>
+            <div id="memberViewContributions" style="display: flex; flex-direction: column; gap: 12px;">
+              <div><strong>Total Tithes:</strong> <span id="memberViewTithes" style="color: var(--primary); font-weight: 700;">KES 0.00</span></div>
+              <div><strong>Church Giving:</strong> <span id="memberViewChurchGiving" style="color: var(--primary); font-weight: 700;">KES 0.00</span></div>
+              <div><strong>Project Giving:</strong> <span id="memberViewProjectGiving" style="color: var(--primary); font-weight: 700;">KES 0.00</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Staff/Pastor Dashboard -->
+        <div id="staffDashboardContainer">
+          <div class="stats-grid">
+            <div class="stat-card">
+              <span class="stat-label">Total Members</span>
+              <span id="totalMembers" class="stat-value">0</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Total Males</span>
+              <span id="totalMales" class="stat-value">0</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Total Females</span>
+              <span id="totalFemales" class="stat-value">0</span>
+            </div>
+            <div id="totalTithesCard" class="stat-card" style="cursor: pointer;">
+              <span class="stat-label">Total Tithes</span>
+              <span id="totalTithes" class="stat-value">KES 0.00</span>
+            </div>
+          </div>
+
+          <div class="group-summary">
+            <h3>Members per Group</h3>
+            <ul id="groupTotals">
+              <li>Amani: 0</li>
+              <li>Warriors of Christ: 0</li>
+              <li>Jerusalem: 0</li>
+              <li>Blessed Zion: 0</li>
+              <li>Macedonia: 0</li>
+            </ul>
+          </div>
+        </div>
+      </aside>
+
+      <section class="content">
+        <nav class="tabs">
+          <button class="tab-btn active" data-tab="members">Members</button>
+          <button class="tab-btn" data-tab="giving">Church Giving</button>
+          <button class="tab-btn" data-tab="tithe">Tithe</button>
+          <button class="tab-btn" data-tab="project">Project Giving</button>
+          <button class="tab-btn" data-tab="inventory">Inventory</button>
+          <button class="tab-btn" data-tab="welfare">Welfare</button>
+          <button class="tab-btn" data-tab="attendance">Attendance</button>
+          <button class="tab-btn" data-tab="expenses">Expenses</button>
+          <button class="tab-btn" data-tab="department">Department Contribution</button>
+          <button class="tab-btn" data-tab="addmember">Add Member</button>
+          <button class="tab-btn" data-tab="backup">Data Backup</button>
+          <button class="tab-btn" data-tab="logout">Logout</button>
+        </nav>
+
+        <!-- Members Tab -->
+        <div id="members" class="tab-content active">
+          <div class="members-layout">
+            <section class="card">
+              <h2>Registered Members</h2>
+              <div id="message" class="message"></div>
+              <table id="membersTable">
+                <thead>
+                  <tr>
+                    <th>Membership No.</th>
+                    <th>Name</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </section>
+
+            <aside id="detailPanel" class="detail-panel card">
+              <div class="detail-close">×</div>
+              <div id="memberDetails"></div>
+
+              <div id="memberActions" style="margin-top: 24px; display: flex; gap: 12px; flex-wrap: wrap;">
+                <button id="editMemberBtn" style="flex: 1; padding: 10px 16px; background: #10b981; border: none; border-radius: 8px; color: white; cursor: pointer; font-size: 0.9rem;">Edit Member</button>
+                <button id="generateCardBtn" style="flex: 1; padding: 10px 16px; background: #8b5cf6; border: none; border-radius: 8px; color: white; cursor: pointer; font-size: 0.9rem;">Generate Card</button>
+                <button id="deleteMemberBtn" style="flex: 1; padding: 10px 16px; background: #ef4444; border: none; border-radius: 8px; color: white; cursor: pointer; font-size: 0.9rem;">Delete</button>
+              </div>
+            </aside>
+
+            <!-- Edit Member Modal -->
+            <div id="editModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+              <div class="card" style="width: 90%; max-width: 500px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                  <h3 style="margin: 0;">Edit Member</h3>
+                  <button id="closeEditModal" style="border: none; background: none; font-size: 1.5rem; cursor: pointer;">×</button>
+                </div>
+                <form id="editForm">
+                  <label>
+                    Name
+                    <input type="text" id="editName" required />
+                  </label>
+                  <label>
+                    Phone Number
+                    <input type="tel" id="editPhone" required />
+                  </label>
+                  <label>
+                    Gender
+                    <select id="editGender" required>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                    </select>
+                  </label>
+                  <label>
+                    Group
+                    <select id="editGroup" required>
+                      <option value="Amani">Amani</option>
+                      <option value="Warriors of Christ">Warriors of Christ</option>
+                      <option value="Jerusalem">Jerusalem</option>
+                      <option value="Blessed Zion">Blessed Zion</option>
+                      <option value="Macedonia">Macedonia</option>
+                    </select>
+                  </label>
+                  <label>
+                    Date Joined
+                    <input type="date" id="editDateJoined" required />
+                  </label>
+                  <button type="submit">Save Changes</button>
+                </form>
+              </div>
+            </div>
+
+            <!-- Membership Card Modal -->
+            <div id="cardModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+              <div style="background: white; width: 90%; max-width: 500px; border-radius: 12px; box-shadow: 0 20px 40px rgba(0,0,0,0.3);">
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid var(--border);">
+                  <h3 style="margin: 0;">Membership Card</h3>
+                  <button id="closeCardModal" style="border: none; background: none; font-size: 1.5rem; cursor: pointer;">×</button>
+                </div>
+                <div id="cardContent" style="padding: 40px 20px; text-align: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 8px; margin: 20px; min-height: 300px; display: flex; flex-direction: column; justify-content: space-between;">
+                  <div>
+                    <h2 style="margin: 0 0 10px 0;">MIZPAH ONLINE</h2>
+                    <p style="margin: 0 0 30px 0; font-size: 0.9rem; opacity: 0.9;">Church Member Card</p>
+                  </div>
+                  <div id="cardInfo"></div>
+                  <button id="printCardBtn" style="padding: 12px 24px; background: white; color: #667eea; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; margin-top: 20px;">Print Card</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Church Giving Tab -->
+        <div id="giving" class="tab-content card">
+          <h2>Church Giving</h2>
+          <div class="form-section-header">
+            <h3 style="margin: 0; flex: 1;">Record Church Giving</h3>
+            <button type="button" class="form-close-btn" onclick="toggleFormSection('givingFormContainer')">−</button>
+          </div>
+          <div id="givingFormContainer" class="form-container">
+            <form id="churchGivingForm">
+              <label>
+                Giving Type
+                <select id="givingType" required>
+                  <option value="" disabled selected>Select giving type</option>
+                  <option value="offering">Offering</option>
+                  <option value="thanksgiving">Thanksgiving</option>
+                  <option value="seed">Seed</option>
+                  <option value="sundayschool">Sunday School</option>
+                  <option value="mission">Mission</option>
+                  <option value="other">Other</option>
+                  <option value="tithe">Tithe (Auto-fetch from date)</option>
+                </select>
+              </label>
+
+              <label>
+                Date
+                <input type="date" id="givingDate" required />
+              </label>
+
+              <label>
+                Amount (KES) - Leave blank for Tithe to auto-calculate
+                <input type="number" id="givingAmount" placeholder="Enter amount" step="0.01" />
+              </label>
+
+              <label>
+                Notes (Optional)
+                <textarea id="givingNotes" placeholder="Add any notes..." style="width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; font-size: 1rem; font-family: inherit; resize: vertical; min-height: 80px;"></textarea>
+              </label>
+
+              <div style="display: flex; gap: 8px;">
+                <button type="submit" style="flex: 1;">Record Giving</button>
+                <button type="button" id="closeGivingForm" style="flex: 0 0 auto; padding: 12px 16px; background: #6b7280; color: white;">Clear Form</button>
+              </div>
+            </form>
+            <div id="givingMessage" class="message"></div>
+          </div>
+
+          <div id="givingRecordsSection" style="margin-top: 30px;">
+            <h3 style="margin: 0 0 16px 0;">Church Giving Records</h3>
+            <div id="givingMonthGroups"></div>
+          </div>
+        </div>
+
+        <!-- Tithe Tab -->
+        <div id="tithe" class="tab-content card">
+          <h2>Tithe Records</h2>
+          <div class="form-section-header">
+            <h3 style="margin: 0; flex: 1;">Record Tithe</h3>
+            <button type="button" class="form-close-btn" onclick="toggleFormSection('titheFormContainer')">−</button>
+          </div>
+          <div id="titheFormContainer" class="form-container">
+            <form id="titheTabForm">
+            <label>
+              Member (Search by Name or Membership No.)
+              <div style="position: relative;">
+                <input 
+                  type="text" 
+                  id="titheMemberSearch" 
+                  placeholder="Enter member name or ID..." 
+                  autocomplete="off"
+                />
+                <div id="titheMemberSearchResults" style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid var(--border); border-top: none; border-radius: 0 0 12px 12px; max-height: 200px; overflow-y: auto; z-index: 100; display: none;"></div>
+                <input type="hidden" id="titheMember" required />
+              </div>
+            </label>
+
+            <label>
+              Amount (KES)
+              <input type="number" id="titheTabAmount" placeholder="Enter tithe amount" step="0.01" required />
+            </label>
+
+            <label>
+              Date Recorded
+              <input type="date" id="titheTabDate" required />
+            </label>
+
+            <div style="display: flex; gap: 8px;">
+              <button type="submit" style="flex: 1;">Record Tithe</button>
+              <button type="button" id="closeTitheForm" style="flex: 0 0 auto; padding: 12px 16px; background: #6b7280; color: white;">Clear Form</button>
+            </div>
+            </form>
+            <div id="titheMessage" class="message"></div>
+          </div>
+          
+          <div id="titheRecordsSection" style="margin-top: 30px;">
+            <h3 style="margin: 0 0 16px 0;">Tithe Records</h3>
+            <div id="titheMonthGroups"></div>
+          </div>
+        </div>
+
+        <!-- Project Giving Tab -->
+        <div id="project" class="tab-content card">
+          <h2>Church Project Giving</h2>
+          <div class="form-section-header">
+            <h3 style="margin: 0; flex: 1;">Record Project Giving</h3>
+            <button type="button" class="form-close-btn" onclick="toggleFormSection('projectFormContainer')">−</button>
+          </div>
+          <div id="projectFormContainer" class="form-container">
+            <form id="projectForm">
+            <label>
+              Member (Search by Name or Membership No.)
+              <div style="position: relative;">
+                <input 
+                  type="text" 
+                  id="projectMemberSearch" 
+                  placeholder="Enter member name or ID..." 
+                  autocomplete="off"
+                />
+                <div id="projectMemberSearchResults" style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid var(--border); border-top: none; border-radius: 0 0 12px 12px; max-height: 200px; overflow-y: auto; z-index: 100; display: none;"></div>
+                <input type="hidden" id="projectMember" required />
+              </div>
+            </label>
+
+            <label>
+              Amount Given (KES)
+              <input type="number" id="projectAmount" placeholder="Enter amount" step="0.01" required />
+            </label>
+
+            <label>
+              Date Recorded
+              <input type="date" id="projectDate" required />
+            </label>
+
+            <div style="display: flex; gap: 8px;">
+              <button type="submit" style="flex: 1;">Record Giving</button>
+              <button type="button" id="closeProjectForm" style="flex: 0 0 auto; padding: 12px 16px; background: #6b7280; color: white;">Clear Form</button>
+            </div>
+            </form>
+            <div id="projectMessage" class="message"></div>
+          </div>
+          
+          <div id="projectGroupSummary" style="margin-top: 30px;">
+            <h3 style="margin: 0 0 16px 0;">Project Giving by Group</h3>
+            <ul id="projectGroupList" style="list-style: none; padding: 0; margin: 0; display: grid; gap: 12px;"></ul>
+          </div>
+        </div>
+
+        <!-- Inventory Tab -->
+        <div id="inventory" class="tab-content card">
+          <h2>Church Inventory</h2>
+          <div class="form-section-header">
+            <h3 style="margin: 0; flex: 1;">Add Item to Inventory</h3>
+            <button type="button" class="form-close-btn" onclick="toggleFormSection('inventoryFormContainer')">−</button>
+          </div>
+          <div id="inventoryFormContainer" class="form-container">
+            <form id="inventoryForm">
+            <label>
+              Item
+              <input type="text" id="inventoryItem" placeholder="Enter item name" required />
+            </label>
+
+            <label>
+              Quantity
+              <input type="number" id="inventoryQuantity" placeholder="Enter quantity" required />
+            </label>
+
+            <label>
+              Location
+              <input type="text" id="inventoryLocation" placeholder="Enter storage location" required />
+            </label>
+
+            <button type="submit">Add Item</button>
+            </form>
+            <div id="inventoryMessage" class="message"></div>
+          </div>
+          <table id="inventoryTable" style="margin-top: 20px;">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Quantity</th>
+                <th>Location</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <!-- Welfare Tab -->
+        <div id="welfare" class="tab-content card">
+          <h2>Welfare</h2>
+          <div class="form-section-header">
+            <h3 style="margin: 0; flex: 1;">Record Welfare Support</h3>
+            <button type="button" class="form-close-btn" onclick="toggleFormSection('welfareFormContainer')">−</button>
+          </div>
+          <div id="welfareFormContainer" class="form-container">
+            <form id="welfareForm">
+              <label>
+                Beneficiary
+                <div style="position: relative; background: #eff6ff; border-radius: 12px; padding: 10px;">
+                  <input
+                    type="text"
+                    id="welfareBeneficiarySearch"
+                    placeholder="Search beneficiary by name or ID..."
+                    autocomplete="off"
+                    style="background: transparent; border: none; outline: none;"
+                  />
+                  <div id="welfareBeneficiarySearchResults" style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid var(--border); border-top: none; border-radius: 0 0 12px 12px; max-height: 200px; overflow-y: auto; z-index: 100; display: none;"></div>
+                  <input type="hidden" id="welfareBeneficiary" required />
+                </div>
+              </label>
+
+              <label>
+                Member who Contributed
+                <div style="position: relative;">
+                  <input
+                    type="text"
+                    id="welfareContributorSearch"
+                    placeholder="Search contributor by name or ID..."
+                    autocomplete="off"
+                  />
+                  <div id="welfareContributorSearchResults" style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid var(--border); border-top: none; border-radius: 0 0 12px 12px; max-height: 200px; overflow-y: auto; z-index: 100; display: none;"></div>
+                  <input type="hidden" id="welfareContributor" required />
+                </div>
+              </label>
+
+              <label>
+                Amount (KES)
+                <input type="number" id="welfareAmount" placeholder="Enter amount" step="0.01" required />
+              </label>
+
+              <label>
+                Date Recorded
+                <input type="date" id="welfareDate" required />
+              </label>
+
+              <div style="display: flex; gap: 8px;">
+                <button type="submit" style="flex: 1;">Record Welfare</button>
+                <button type="button" id="closeWelfareForm" style="flex: 0 0 auto; padding: 12px 16px; background: #6b7280; color: white;">Clear Form</button>
+              </div>
+            </form>
+            <div id="welfareMessage" class="message"></div>
+          </div>
+
+          <div id="welfareRecordsSection" style="margin-top: 30px;">
+            <h3 style="margin: 0 0 16px 0;">Welfare Records</h3>
+            <div id="welfareRecordList"></div>
+          </div>
+        </div>
+
+        <!-- Attendance Tab -->
+        <div id="attendance" class="tab-content card">
+          <h2>Attendance</h2>
+          <div class="form-section-header">
+            <h3 style="margin: 0; flex: 1;">Record Attendance</h3>
+            <button type="button" class="form-close-btn" onclick="toggleFormSection('attendanceFormContainer')">−</button>
+          </div>
+          <div id="attendanceFormContainer" class="form-container">
+            <form id="attendanceForm">
+              <label>
+                Date
+                <input type="date" id="attendanceDate" required />
+              </label>
+
+              <label>
+                Adults
+                <input type="number" id="attendanceAdults" placeholder="0" min="0" value="0" required />
+              </label>
+
+              <label>
+                Teens
+                <input type="number" id="attendanceTeens" placeholder="0" min="0" value="0" required />
+              </label>
+
+              <label>
+                Sunday School
+                <input type="number" id="attendanceSundaySchool" placeholder="0" min="0" value="0" required />
+              </label>
+
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <button type="submit" id="attendanceSubmitBtn" style="flex: 1;">Record Attendance</button>
+                <button type="button" id="closeAttendanceForm" style="flex: 0 0 auto; padding: 12px 16px; background: #6b7280; color: white;">Clear Form</button>
+                <button type="button" id="cancelAttendanceEditBtn" style="flex: 0 0 auto; padding: 12px 16px; background: #ef4444; color: white; display: none;">Cancel Edit</button>
+              </div>
+            </form>
+            <div id="attendanceMessage" class="message"></div>
+          </div>
+
+          <div id="attendanceRecordsSection" style="margin-top: 30px;">
+            <h3 style="margin: 0 0 16px 0;">Attendance Records</h3>
+            <div id="attendanceMonthGroups"></div>
+          </div>
+        </div>
+
+        <!-- Expenses Tab -->
+        <div id="expenses" class="tab-content card">
+          <h2>Church Expenses</h2>
+          <div class="form-section-header">
+            <h3 style="margin: 0; flex: 1;">Record Church Expense</h3>
+            <button type="button" class="form-close-btn" onclick="toggleFormSection('expenseFormContainer')">−</button>
+          </div>
+          <div id="expenseFormContainer" class="form-container">
+            <form id="expenseForm">
+              <label>
+                Expense Type
+                <input type="text" id="expenseType" placeholder="e.g., Rent, Utilities, Maintenance" required />
+              </label>
+
+              <label>
+                Date
+                <input type="date" id="expenseDate" required />
+              </label>
+
+              <label>
+                Amount (KES)
+                <input type="number" id="expenseAmount" placeholder="Enter amount" step="0.01" required />
+              </label>
+
+              <label>
+                Notes (Optional)
+                <textarea id="expenseNotes" placeholder="Add any notes..." style="width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; font-size: 1rem; font-family: inherit; resize: vertical; min-height: 80px;"></textarea>
+              </label>
+
+              <div style="display: flex; gap: 8px;">
+                <button type="submit" style="flex: 1;">Record Expense</button>
+                <button type="button" id="closeExpenseForm" style="flex: 0 0 auto; padding: 12px 16px; background: #6b7280; color: white;">Clear Form</button>
+              </div>
+            </form>
+            <div id="expenseMessage" class="message"></div>
+          </div>
+
+          <div id="expenseRecordsSection" style="margin-top: 30px;">
+            <h3 style="margin: 0 0 16px 0;">Expense Records</h3>
+            <div id="expenseMonthGroups"></div>
+          </div>
+        </div>
+
+        <!-- Department Contribution Tab -->
+        <div id="department" class="tab-content card">
+          <h2>Department Contribution</h2>
+          <div class="form-section-header">
+            <h3 style="margin: 0; flex: 1;">Record Department Contribution</h3>
+            <button type="button" class="form-close-btn" onclick="toggleFormSection('departmentFormContainer')">−</button>
+          </div>
+          <div id="departmentFormContainer" class="form-container">
+            <form id="departmentContributionForm">
+              <label>
+                Department
+                <select id="departmentName" required>
+                  <option value="" disabled selected>Select department</option>
+                  <option value="men">Men</option>
+                  <option value="ladies">Ladies</option>
+                  <option value="youth">Youth</option>
+                  <option value="teens">Teens</option>
+                  <option value="sundayschool">Sunday School</option>
+                  <option value="intercessory">Intercessory</option>
+                  <option value="mission">Mission</option>
+                  <option value="praiseandworship">Praise and Worship</option>
+                  <option value="ushering">Ushering</option>
+                </select>
+              </label>
+
+              <label>
+                Transaction Type
+                <select id="transactionType" required>
+                  <option value="" disabled selected>Select type</option>
+                  <option value="deposit">Deposit</option>
+                  <option value="withdraw">Withdraw</option>
+                </select>
+              </label>
+
+              <label>
+                Date
+                <input type="date" id="departmentDate" required />
+              </label>
+
+              <label>
+                Amount (KES)
+                <input type="number" id="departmentAmount" placeholder="Enter amount" step="0.01" required />
+              </label>
+
+              <label>
+                Notes (Optional)
+                <textarea id="departmentNotes" placeholder="Add any notes..." style="width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; font-size: 1rem; font-family: inherit; resize: vertical; min-height: 80px;"></textarea>
+              </label>
+
+              <div style="display: flex; gap: 8px;">
+                <button type="submit" style="flex: 1;">Record Contribution</button>
+                <button type="button" id="closeDepartmentForm" style="flex: 0 0 auto; padding: 12px 16px; background: #6b7280; color: white;">Clear Form</button>
+              </div>
+            </form>
+            <div id="departmentMessage" class="message"></div>
+          </div>
+
+          <div id="departmentRecordsSection" style="margin-top: 30px;">
+            <h3 style="margin: 0 0 16px 0;">Department Balance Overview</h3>
+            <div id="departmentBalances"></div>
+            
+            <h3 style="margin: 30px 0 16px 0;">Department Records</h3>
+            <div id="departmentMonthGroups"></div>
+          </div>
+        </div>
+
+        <!-- Add Member Tab -->
+        <div id="addmember" class="tab-content card">
+          <h2>Register a Member</h2>
+          <form id="memberForm">
+            <label>
+              Name
+              <input type="text" id="name" placeholder="Enter full name" required />
+            </label>
+
+            <label>
+              Phone Number
+              <input type="tel" id="phone" placeholder="Enter phone number" required />
+            </label>
+
+            <label>
+              Gender
+              <select id="gender" required>
+                <option value="" disabled selected>Select gender</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+              </select>
+            </label>
+
+            <label>
+              Group
+              <select id="group" required>
+                <option value="" disabled selected>Select a group</option>
+                <option value="Amani">Amani</option>
+                <option value="Warriors of Christ">Warriors of Christ</option>
+                <option value="Jerusalem">Jerusalem</option>
+                <option value="Blessed Zion">Blessed Zion</option>
+                <option value="Macedonia">Macedonia</option>
+              </select>
+            </label>
+
+            <label>
+              Date Joined
+              <input type="date" id="dateJoined" required />
+            </label>
+
+            <button type="submit">Register Member</button>
+          </form>
+        </div>
+
+        <!-- Data Backup Tab -->
+        <div id="backup" class="tab-content card">
+          <h2>Data Backup & Restore</h2>
+          <p style="margin-bottom: 20px; color: var(--muted);">Export all your data to a file for backup, or import previously saved data.</p>
+          
+          <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <button id="exportDataBtn" style="flex: 1; padding: 12px 20px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1rem;">📥 Export All Data</button>
+            <button id="importDataBtn" style="flex: 1; padding: 12px 20px; background: #10b981; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1rem;">📤 Import Data</button>
+            <button id="exportReportsBtn" style="flex: 1; padding: 12px 20px; background: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1rem;">🧾 Export Reports to Excel</button>
+          </div>
+          <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px;">
+            <button id="exportTitheReportBtn" style="flex: 1; padding: 12px 20px; background: #4f46e5; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1rem;">📊 Export Tithe per Month</button>
+            <button id="exportExpenseReportBtn" style="flex: 1; padding: 12px 20px; background: #dc2626; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1rem;">📊 Export Expenses per Month</button>
+            <button id="exportMembersReportBtn" style="flex: 1; padding: 12px 20px; background: #059669; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1rem;">👥 Export Members Report</button>
+            <button id="exportWelfareReportBtn" style="flex: 1; padding: 12px 20px; background: #9333ea; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1rem;">💚 Export Welfare List</button>
+            <button id="exportProjectReportBtn" style="flex: 1; padding: 12px 20px; background: #0ea5e9; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1rem;">🏗️ Export Project Giving</button>
+          </div>
+          
+          <input type="file" id="importFileInput" accept=".json" style="display: none;" />
+          
+          <div id="backupMessage" class="message" style="margin-top: 20px;"></div>
+          
+          <div style="margin-top: 30px; padding: 16px; background: #f8fafc; border-radius: 8px; border: 1px solid var(--border);">
+            <h4 style="margin-top: 0;">How to Use:</h4>
+            <ul style="margin: 8px 0; padding-left: 20px;">
+              <li><strong>Export:</strong> Click "Export All Data" to download a backup file</li>
+              <li><strong>Restore:</strong> Click "Import Data" and select a previously exported file</li>
+              <li><strong>File Location:</strong> Check your Downloads folder for the exported file</li>
+            </ul>
+          </div>
+        </div>
+
+        <div id="logout" class="tab-content card">
+          <h2>Logout</h2>
+          <p style="margin-bottom: 20px; color: var(--muted);">Use this tab to securely sign out of the system.</p>
+          <button id="logoutTabBtn" style="padding: 12px 20px; background: #ef4444; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">Logout</button>
+        </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Export Selection Modals -->
+  <div id="monthSelectionModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; justify-content: center; align-items: center;">
+    <div style="background: white; border-radius: 8px; padding: 24px; max-width: 400px; width: 90%; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+        <h3 style="margin: 0;">Select Month to Export</h3>
+        <button onclick="document.getElementById('monthSelectionModal').style.display='none'" style="background: transparent; border: none; font-size: 1.5rem; line-height: 1; cursor: pointer; color: #444;">×</button>
+      </div>
+      <select id="monthSelector" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; margin-bottom: 16px;">
+        <option value="">-- Select a month --</option>
+      </select>
+      <div style="display: flex; gap: 12px; justify-content: flex-end;">
+        <button id="cancelMonthBtn" style="padding: 10px 16px; background: #ccc; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
+        <button id="confirmMonthBtn" style="padding: 10px 16px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Export</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="beneficiarySelectionModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; justify-content: center; align-items: center;">
+    <div style="background: white; border-radius: 8px; padding: 24px; max-width: 400px; width: 90%; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+        <h3 style="margin: 0;">Select Beneficiary to Export</h3>
+        <button onclick="document.getElementById('beneficiarySelectionModal').style.display='none'" style="background: transparent; border: none; font-size: 1.5rem; line-height: 1; cursor: pointer; color: #444;">×</button>
+      </div>
+      <select id="beneficiarySelector" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; margin-bottom: 16px;">
+        <option value="">-- Select a beneficiary --</option>
+      </select>
+      <div style="display: flex; gap: 12px; justify-content: flex-end;">
+        <button id="cancelBeneficiaryBtn" style="padding: 10px 16px; background: #ccc; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
+        <button id="confirmBeneficiaryBtn" style="padding: 10px 16px; background: var(--primary); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Export</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
