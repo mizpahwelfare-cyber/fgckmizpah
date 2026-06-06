@@ -10,11 +10,11 @@ const { MongoClient } = require('mongodb');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
-const MONGO_URI = process.env.MONGODB_URI || '';
-const MONGO_DB_NAME = process.env.MONGODB_DB || 'mizpah-online';
+const MONGO_URI = process.env.MONGODB_URI?.trim() || '';
+const MONGO_DB_NAME = process.env.MONGODB_DB?.trim() || 'mizpah-online';
 const DATA_DIR = path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
-const useMongo = Boolean(MONGO_URI);
+let useMongo = Boolean(MONGO_URI);
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -73,13 +73,18 @@ function saveLocalDb(db) {
 async function connectMongo() {
   if (!useMongo) return;
   try {
-    mongoClient = new MongoClient(MONGO_URI);
+    mongoClient = new MongoClient(MONGO_URI, {
+      tls: true,
+      connectTimeoutMS: 10000,
+      serverApi: '1'
+    });
     await mongoClient.connect();
     mongoDb = mongoClient.db(MONGO_DB_NAME);
     console.log(`Connected to MongoDB database: ${MONGO_DB_NAME}`);
   } catch (error) {
-    console.error('MongoDB connection failed:', error.message);
-    process.exit(1);
+    console.error('MongoDB connection failed:', error);
+    useMongo = false;
+    console.warn('MongoDB is unavailable. Continuing with local JSON storage.');
   }
 }
 
@@ -267,7 +272,7 @@ app.get('/api/status', (req, res) => {
   res.json({
     status: 'ok',
     version: '1.0.0',
-    database: useMongo ? 'mongodb' : 'local-json',
+    database: useMongo && mongoDb ? 'mongodb' : 'local-json',
     timestamp: new Date().toISOString()
   });
 });
