@@ -1,6 +1,62 @@
 // ============ AUTHENTICATION & PERMISSION SYSTEM ============
 let currentUser = null;
 
+const API_BASE = window.API_BASE || '';
+const USE_BACKEND = Boolean(API_BASE);
+
+async function fetchMembersFromBackend() {
+  try {
+    const response = await fetch(`${API_BASE}/api/members`);
+    if (!response.ok) throw new Error('Failed to load members from backend');
+    const members = await response.json();
+    if (Array.isArray(members)) {
+      saveMembers(members);
+      return members;
+    }
+    return getStoredMembers();
+  } catch (error) {
+    console.error('Backend sync failed:', error);
+    return getStoredMembers();
+  }
+}
+
+async function addMemberToBackend(member) {
+  const response = await fetch(`${API_BASE}/api/members`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(member)
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || 'Failed to save member to backend');
+  }
+  return response.json();
+}
+
+async function updateMemberInBackend(member) {
+  const response = await fetch(`${API_BASE}/api/members/${encodeURIComponent(member.membershipNumber)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(member)
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || 'Failed to update member on backend');
+  }
+  return response.json();
+}
+
+async function deleteMemberFromBackend(membershipNumber) {
+  const response = await fetch(`${API_BASE}/api/members/${encodeURIComponent(membershipNumber)}`, {
+    method: 'DELETE'
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || 'Failed to delete member from backend');
+  }
+  return response.json();
+}
+
 const STAFF_CREDENTIALS = {
   pastor: '72a8403b0b45e2c73f4a19942f191def3d728e2345fdf1e291de2412e2736813',
   elder: '01ce0fac71149c483337c57746f56eef28d1b7c390e7b170bc018c45d5a80513'
@@ -849,14 +905,26 @@ function showContextMenu(e, member) {
   }, 0);
 }
 
-function deleteMember(membershipNumber) {
+async function deleteMember(membershipNumber) {
   if (!hasPermission('canEditMembers')) {
     alert('You do not have permission to delete members.');
     return;
   }
-  const members = getStoredMembers();
-  const filtered = members.filter(m => m.membershipNumber !== membershipNumber);
-  saveMembers(filtered);
+
+  if (USE_BACKEND) {
+    try {
+      await deleteMemberFromBackend(membershipNumber);
+      await fetchMembersFromBackend();
+    } catch (error) {
+      alert(error.message);
+      return;
+    }
+  } else {
+    const members = getStoredMembers();
+    const filtered = members.filter(m => m.membershipNumber !== membershipNumber);
+    saveMembers(filtered);
+  }
+
   closeMemberDetails();
   renderMembers();
 }
@@ -904,7 +972,7 @@ function openEditModal(member) {
   modal.style.display = 'flex';
   
   const editForm = document.getElementById('editForm');
-  editForm.onsubmit = (e) => {
+  editForm.onsubmit = async (e) => {
     e.preventDefault();
     const updatedMember = {
       ...member,
@@ -914,16 +982,27 @@ function openEditModal(member) {
       group: document.getElementById('editGroup').value,
       dateJoined: document.getElementById('editDateJoined').value,
     };
-    
-    let members = getStoredMembers();
-    const index = members.findIndex(m => m.membershipNumber === member.membershipNumber);
-    if (index !== -1) {
-      members[index] = updatedMember;
-      saveMembers(members);
-      renderMembers();
-      closeMemberDetails();
-      modal.style.display = 'none';
+
+    if (USE_BACKEND) {
+      try {
+        await updateMemberInBackend(updatedMember);
+        await fetchMembersFromBackend();
+      } catch (error) {
+        alert(error.message);
+        return;
+      }
+    } else {
+      let members = getStoredMembers();
+      const index = members.findIndex(m => m.membershipNumber === member.membershipNumber);
+      if (index !== -1) {
+        members[index] = updatedMember;
+        saveMembers(members);
+      }
     }
+
+    renderMembers();
+    closeMemberDetails();
+    modal.style.display = 'none';
   };
 }
 
@@ -974,7 +1053,7 @@ document.getElementById('cardModal').addEventListener('click', (e) => {
   }
 });
 
-memberForm.addEventListener('submit', (event) => {
+memberForm.addEventListener('submit', async (event) => {
   event.preventDefault();
 
   const name = document.getElementById('name').value.trim();
@@ -991,20 +1070,34 @@ memberForm.addEventListener('submit', (event) => {
   const membershipNumber = generateMembershipNumber();
   const newMember = { membershipNumber, name, phone, gender, group, dateJoined };
 
-  const members = getStoredMembers();
-  members.push(newMember);
-  saveMembers(members);
+  if (USE_BACKEND) {
+    try {
+      await addMemberToBackend(newMember);
+      await fetchMembersFromBackend();
+    } catch (error) {
+      alert(error.message);
+      return;
+    }
+  } else {
+    const members = getStoredMembers();
+    members.push(newMember);
+    saveMembers(members);
+  }
+
   renderMembers();
 
   memberForm.reset();
   closeMemberDetails();
   showMessage(`Member registered with ID ${membershipNumber}`);
   
-  // Switch to members tab after adding
   document.querySelector('[data-tab="members"]').click();
 });
 
-renderMembers();
+if (USE_BACKEND) {
+  fetchMembersFromBackend().then(renderMembers).catch(() => renderMembers());
+} else {
+  renderMembers();
+}
 
 // Inventory Management
 const inventoryForm = document.getElementById('inventoryForm');
@@ -3035,3 +3128,4 @@ document.addEventListener('DOMContentLoaded', () => {
     appContainer.style.display = 'none';
   }
 });
+
