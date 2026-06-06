@@ -4,8 +4,8 @@ const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { Client } = require('pg');
 const XLSX = require('xlsx');
-const { MongoClient } = require('mongodb');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -20,20 +20,22 @@ function normalizeEnvVar(value) {
   return result;
 }
 
-const MONGO_URI = normalizeEnvVar(process.env.MONGODB_URI);
-const MONGO_DB_NAME = normalizeEnvVar(process.env.MONGODB_DB) || 'mizpah-online';
+const POSTGRES_URL = normalizeEnvVar(process.env.POSTGRES_URL || process.env.DATABASE_URL || process.env.PG_URI);
+const POSTGRES_DB_NAME = normalizeEnvVar(process.env.PGDATABASE || process.env.POSTGRES_DB) || 'mizpah-online';
+const ENFORCE_DB = String(process.env.ENFORCE_DB || '').toLowerCase() === 'true';
 const DATA_DIR = path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
-let useMongo = Boolean(MONGO_URI);
+let usePostgres = Boolean(POSTGRES_URL);
 
 function maskValue(value) {
   if (!value) return 'not set';
   return `${value.slice(0, 10)}...${value.slice(-10)}`;
 }
 
-console.log(`MongoDB configured: ${Boolean(MONGO_URI)}`);
-console.log(`MongoDB DB name: ${MONGO_DB_NAME}`);
-console.log(`MONGODB_URI mask: ${maskValue(MONGO_URI)}`);
+console.log(`PostgreSQL configured: ${Boolean(POSTGRES_URL)}`);
+console.log(`PostgreSQL DB name: ${POSTGRES_DB_NAME}`);
+console.log(`POSTGRES_URL mask: ${maskValue(POSTGRES_URL)}`);
+console.log(`Database enforce mode: ${ENFORCE_DB}`);
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -50,8 +52,7 @@ const collectionTypes = [
   'backups'
 ];
 
-let mongoClient = null;
-let mongoDb = null;
+let pgClient = null;
 
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) {
@@ -89,26 +90,88 @@ function saveLocalDb(db) {
   return db;
 }
 
-async function connectMongo() {
-  if (!useMongo) return;
-  try {
-    mongoClient = new MongoClient(MONGO_URI, {
-      connectTimeoutMS: 10000,
-      serverSelectionTimeoutMS: 10000
-    });
-    await mongoClient.connect();
-    mongoDb = mongoClient.db(MONGO_DB_NAME);
-    console.log(`Connected to MongoDB database: ${MONGO_DB_NAME}`);
-  } catch (error) {
-    console.error('MongoDB connection failed:', error);
-    useMongo = false;
-    console.warn('MongoDB is unavailable. Continuing with local JSON storage.');
-  }
+async function initializePostgres() {
+  if (!pgClient) return;
+  await pgClient.query(`
+    CREATE TABLE IF NOT EXISTS records (
+      collection TEXT NOT NULL,
+      record_key TEXT NOT NULL,
+      data JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (collection, record_key)
+    );
+  `);
+  await pgClient.query(`CREATE INDEX IF NOT EXISTS idx_records_collection ON records(collection);`);
+  await pgClient.query(`CREATE INDEX IF NOT EXISTS idx_records_collection_data_id ON records(collection, (data->>'id'));`);
+  await pgClient.query(`CREATE INDEX IF NOT EXISTS idx_records_collection_data_membershipNumber ON records(collection, (data->>'membershipNumber'));`);
 }
 
-async function closeMongo() {
-  if (mongoClient) {
-    await mongoClient.close();
+function getRecordKey(type, item) {
+  if (type === 'members' && item.membershipNumber) return item.membershipNumber;
+  if (item.id) return item.id;
+  return item.membershipNumber || item.id || `record-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function buildFilterQuery(type, filter, select = 'record_key, data') {
+  const conditions = [];
+  const params = [type];
+  let idx = 2;
+
+  if (filter.membershipNumber) {
+    conditions.push(`data->>'membershipNumber' = $${idx++}`);
+    params.push(String(filter.membershipNumber));
+  }
+
+  if (filter.id) {
+    conditions.push(`data->>'id' = $${idx++}`);
+    params.push(String(filter.id));
+  }
+
+  if (!conditions.length) {
+    conditions.push(`data @> $${idx++}`);
+    params.push(JSON.stringify(filter));
+  }
+
+  return {
+    query: `SELECT ${select} FROM records WHERE collection = $1 AND ${conditions.join(' AND ')} LIMIT 1`,
+    params
+  };
+}
+
+async function connectPostgres() {
+  if (!usePostgres) return;
+
+  const maxAttempts = 5;
+  const retryDelayMs = 5000;
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      pgClient = new Client({ connectionString: POSTGRES_URL });
+      await pgClient.connect();
+      await initializePostgres();
+      console.log(`Connected to PostgreSQL database: ${POSTGRES_DB_NAME}`);
+      return;
+    } catch (error) {
+      lastError = error;
+      console.error(`PostgreSQL connection attempt ${attempt} failed:`, error.message || error);
+      if (attempt < maxAttempts) {
+        console.warn(`Retrying PostgreSQL connection in ${retryDelayMs / 1000} seconds... (${attempt}/${maxAttempts})`);
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      }
+    }
+  }
+
+  console.error('PostgreSQL connection failed after multiple attempts:', lastError);
+  usePostgres = false;
+  console.warn('PostgreSQL is unavailable. Continuing with local JSON storage.');
+}
+
+async function closePostgres() {
+  if (pgClient) {
+    await pgClient.end();
+    pgClient = null;
   }
 }
 
@@ -128,26 +191,33 @@ function getLocalCollection(db, type) {
   return collections[type];
 }
 
-async function getCollection(type) {
-  if (useMongo && mongoDb) {
-    return mongoDb.collection(type);
+async function findRecord(type, filter) {
+  if (usePostgres && pgClient) {
+    const { query, params } = buildFilterQuery(type, filter);
+    const result = await pgClient.query(query, params);
+    return result.rows[0] || null;
   }
+
   const db = loadLocalDb();
-  return { local: true, db, data: getLocalCollection(db, type) };
+  const collection = db[type] || [];
+  const item = collection.find((existing) =>
+    Object.keys(filter).every((key) => existing[key] === filter[key])
+  );
+  return item ? { record_key: getRecordKey(type, item), data: item } : null;
 }
 
 async function findAll(type) {
-  if (useMongo && mongoDb) {
-    const collection = await getCollection(type);
-    return collection.find().toArray();
+  if (usePostgres && pgClient) {
+    const result = await pgClient.query('SELECT data FROM records WHERE collection = $1 ORDER BY created_at', [type]);
+    return result.rows.map((row) => row.data);
   }
   return loadLocalDb()[type] || [];
 }
 
 async function findOne(type, filter) {
-  if (useMongo && mongoDb) {
-    const collection = await getCollection(type);
-    return collection.findOne(filter);
+  if (usePostgres && pgClient) {
+    const record = await findRecord(type, filter);
+    return record ? record.data : null;
   }
   const db = loadLocalDb();
   return (db[type] || []).find((item) =>
@@ -156,11 +226,17 @@ async function findOne(type, filter) {
 }
 
 async function insertOne(type, item) {
-  if (useMongo && mongoDb) {
-    const collection = await getCollection(type);
-    await collection.insertOne(item);
-    return item;
+  if (usePostgres && pgClient) {
+    const recordKey = getRecordKey(type, item);
+    const now = new Date().toISOString();
+    const data = { ...item, createdAt: item.createdAt || now, updatedAt: now };
+    await pgClient.query(
+      'INSERT INTO records (collection, record_key, data, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)',
+      [type, recordKey, data, data.createdAt, data.updatedAt]
+    );
+    return data;
   }
+
   const db = loadLocalDb();
   db[type].push(item);
   saveLocalDb(db);
@@ -168,11 +244,17 @@ async function insertOne(type, item) {
 }
 
 async function updateOne(type, filter, update) {
-  if (useMongo && mongoDb) {
-    const collection = await getCollection(type);
-    await collection.updateOne(filter, { $set: update });
-    return collection.findOne(filter);
+  if (usePostgres && pgClient) {
+    const record = await findRecord(type, filter);
+    if (!record) return null;
+    const updated = { ...record.data, ...update, updatedAt: new Date().toISOString() };
+    await pgClient.query(
+      'UPDATE records SET data = $1, updated_at = NOW() WHERE collection = $2 AND record_key = $3',
+      [updated, type, record.record_key]
+    );
+    return updated;
   }
+
   const db = loadLocalDb();
   const item = (db[type] || []).find((existing) =>
     Object.keys(filter).every((key) => existing[key] === filter[key])
@@ -184,13 +266,13 @@ async function updateOne(type, filter, update) {
 }
 
 async function deleteOne(type, filter) {
-  if (useMongo && mongoDb) {
-    const collection = await getCollection(type);
-    const item = await collection.findOne(filter);
-    if (!item) return null;
-    await collection.deleteOne(filter);
-    return item;
+  if (usePostgres && pgClient) {
+    const record = await findRecord(type, filter);
+    if (!record) return null;
+    await pgClient.query('DELETE FROM records WHERE collection = $1 AND record_key = $2', [type, record.record_key]);
+    return record.data;
   }
+
   const db = loadLocalDb();
   const collection = db[type] || [];
   const index = collection.findIndex((existing) =>
@@ -225,12 +307,10 @@ async function mergeImportData(imported) {
     'expenses'
   ];
 
-  if (useMongo && mongoDb) {
+  if (usePostgres && pgClient) {
     for (const type of types) {
       if (!Array.isArray(imported[type])) continue;
       added[type] = 0;
-      const collection = await getCollection(type);
-
       for (const item of imported[type]) {
         const filter =
           type === 'members'
@@ -238,16 +318,15 @@ async function mergeImportData(imported) {
             : item.id
             ? { id: item.id }
             : item;
-        const existing = await collection.findOne(filter);
+        const existing = await findOne(type, filter);
         if (!existing) {
-          await collection.insertOne(item);
+          await insertOne(type, item);
           added[type] += 1;
         }
       }
     }
 
-    const backupCollection = await getCollection('backups');
-    await backupCollection.insertOne({ importedAt: new Date().toISOString(), counts: added });
+    await insertOne('backups', { importedAt: new Date().toISOString(), counts: added });
     return { added };
   }
 
@@ -286,13 +365,21 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname)));
 
+// If ENFORCE_DB=true and Postgres is not configured, reject any API write requests.
+app.use((req, res, next) => {
+  if (ENFORCE_DB && !usePostgres && req.path.startsWith('/api/') && ['POST', 'PUT', 'DELETE'].includes(req.method)) {
+    return res.status(503).json({ error: 'Server is configured to require PostgreSQL but POSTGRES_URL is not set.' });
+  }
+  next();
+});
+
 app.get('/api/status', (req, res) => {
   res.json({
     status: 'ok',
     version: '1.0.0',
-    database: useMongo && mongoDb ? 'mongodb' : 'local-json',
-    mongoConfigured: Boolean(MONGO_URI),
-    mongoDbName: MONGO_DB_NAME,
+    database: usePostgres && pgClient ? 'postgresql' : 'local-json',
+    postgresConfigured: Boolean(POSTGRES_URL),
+    postgresDbName: POSTGRES_DB_NAME,
     timestamp: new Date().toISOString()
   });
 });
@@ -347,7 +434,7 @@ app.delete('/api/members/:id', async (req, res) => {
 });
 
 app.get('/api/backup', async (req, res) => {
-  if (useMongo && mongoDb) {
+  if (usePostgres && pgClient) {
     const records = {};
     for (const type of collectionTypes) {
       records[type] = await findAll(type);
@@ -397,24 +484,82 @@ app.post('/api/records/:type', async (req, res) => {
   res.status(201).json(record);
 });
 
+// Get a single record by id
+app.get('/api/records/:type/:id', async (req, res) => {
+  const type = req.params.type;
+  const id = req.params.id;
+  if (!recordTypes.includes(type)) {
+    return res.status(400).json({ error: `Record type must be one of: ${recordTypes.join(', ')}` });
+  }
+  const record = await findOne(type, { id });
+  if (!record) return res.status(404).json({ error: 'Record not found' });
+  res.json(record);
+});
+
+// Update a record by id
+app.put('/api/records/:type/:id', async (req, res) => {
+  const type = req.params.type;
+  const id = req.params.id;
+  if (!recordTypes.includes(type)) {
+    return res.status(400).json({ error: `Record type must be one of: ${recordTypes.join(', ')}` });
+  }
+  const updated = await updateOne(type, { id }, req.body);
+  if (!updated) return res.status(404).json({ error: 'Record not found' });
+  res.json(updated);
+});
+
+// Delete a record by id
+app.delete('/api/records/:type/:id', async (req, res) => {
+  const type = req.params.type;
+  const id = req.params.id;
+  if (!recordTypes.includes(type)) {
+    return res.status(400).json({ error: `Record type must be one of: ${recordTypes.join(', ')}` });
+  }
+  const deleted = await deleteOne(type, { id });
+  if (!deleted) return res.status(404).json({ error: 'Record not found' });
+  res.json(deleted);
+});
+
 async function startServer() {
-  if (useMongo) {
-    await connectMongo();
+  if (usePostgres) {
+    await connectPostgres();
   }
 
-  app.listen(PORT, HOST, () => {
+  const server = app.listen(PORT, HOST, () => {
     console.log(`Mizpah backend running on http://${HOST}:${PORT}`);
+  });
+
+  server.on('error', (error) => {
+    if (error.code === 'EADDRINUSE') {
+      console.error(`Failed to start server: port ${PORT} is already in use.\n` +
+        `Use a different PORT environment variable or stop the process using port ${PORT}.`);
+      process.exit(1);
+    }
+    console.error('Failed to start server:', error);
+    process.exit(1);
   });
 }
 
 process.on('SIGINT', async () => {
-  await closeMongo();
+  await closePostgres();
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
-  await closeMongo();
+  await closePostgres();
   process.exit(0);
+});
+
+process.on('uncaughtException', async (error) => {
+  console.error('Uncaught exception:', error);
+  await closePostgres();
+  process.exit(1);
+});
+
+process.on('unhandledRejection', async (reason) => {
+  console.error('Unhandled rejection:', reason);
+  await closePostgres();
+  process.exit(1);
 });
 
 startServer().catch((error) => {

@@ -1,6 +1,21 @@
 {
   "members": [],
-  "inventory": [],
+  "inventory": [
+    {
+      "id": "inventory-1780770069377",
+      "itemName": "Bible",
+      "quantity": 5,
+      "location": "Store",
+      "createdAt": "2026-06-06T18:21:09.378Z"
+    },
+    {
+      "id": "inventory-1780770773665",
+      "itemName": "TestBook",
+      "quantity": 2,
+      "location": "Store",
+      "createdAt": "2026-06-06T18:32:53.665Z"
+    }
+  ],
   "projectGiving": [],
   "tithes": [],
   "attendance": [],

@@ -1,8 +1,9 @@
 // ============ AUTHENTICATION & PERMISSION SYSTEM ============
 let currentUser = null;
 
-const API_BASE = window.API_BASE || '';
-const USE_BACKEND = Boolean(API_BASE);
+const API_BASE = window.API_BASE ?? '';
+// Force using backend API for all persistence. Set window.DISABLE_BACKEND = true to opt-out.
+const USE_BACKEND = (typeof window.DISABLE_BACKEND !== 'boolean') ? true : !window.DISABLE_BACKEND;
 
 async function fetchMembersFromBackend() {
   try {
@@ -10,6 +11,7 @@ async function fetchMembersFromBackend() {
     if (!response.ok) throw new Error('Failed to load members from backend');
     const members = await response.json();
     if (Array.isArray(members)) {
+      backendCache.members = members;
       saveMembers(members);
       return members;
     }
@@ -54,6 +56,79 @@ async function deleteMemberFromBackend(membershipNumber) {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.error || 'Failed to delete member from backend');
   }
+  return response.json();
+}
+
+const BACKEND_COLLECTIONS = ['inventory', 'projectGiving', 'tithes', 'attendance', 'welfare', 'churchGiving', 'departmentContributions', 'expenses'];
+const backendCache = {
+  members: [],
+  inventory: [],
+  projectGiving: [],
+  tithes: [],
+  attendance: [],
+  welfare: [],
+  churchGiving: [],
+  departmentContributions: [],
+  expenses: []
+};
+
+async function loadBackendData() {
+  if (!USE_BACKEND) return backendCache;
+
+  try {
+    const response = await fetch(`${API_BASE}/api/backup`);
+    if (!response.ok) throw new Error('Failed to load backend records');
+    const data = await response.json();
+    backendCache.members = Array.isArray(data.members) ? data.members : [];
+    BACKEND_COLLECTIONS.forEach((type) => {
+      backendCache[type] = Array.isArray(data[type]) ? data[type] : [];
+    });
+    return backendCache;
+  } catch (error) {
+    console.error('Backend cache load failed:', error);
+    return backendCache;
+  }
+}
+
+async function createRecordInBackend(type, record) {
+  const response = await fetch(`${API_BASE}/api/records/${encodeURIComponent(type)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(record)
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to save ${type} record to backend`);
+  }
+  const created = await response.json();
+  await loadBackendData();
+  return created;
+}
+
+async function updateRecordInBackend(type, id, record) {
+  const response = await fetch(`${API_BASE}/api/records/${encodeURIComponent(type)}/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(record)
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to update ${type} record on backend`);
+  }
+  const updated = await response.json();
+  await loadBackendData();
+  return updated;
+}
+
+async function deleteRecordInBackend(type, id) {
+  const response = await fetch(`${API_BASE}/api/records/${encodeURIComponent(type)}/${encodeURIComponent(id)}`, {
+    method: 'DELETE'
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to delete ${type} record from backend`);
+  }
+  await loadBackendData();
   return response.json();
 }
 
@@ -170,6 +245,19 @@ function logout() {
   document.getElementById('loginScreen').style.display = 'flex';
   document.getElementById('appContainer').style.display = 'none';
   document.getElementById('loginForm').reset();
+  // Clear all input fields explicitly
+  document.getElementById('loginUserType').value = '';
+  document.getElementById('loginPassword').value = '';
+  document.getElementById('loginMembershipNo').value = '';
+  document.getElementById('loginMemberPassword').value = '';
+  // Hide all form field groups
+  document.getElementById('staffLoginFields').style.display = 'none';
+  document.getElementById('memberLoginFields').style.display = 'none';
+  document.getElementById('memberPasswordFields').style.display = 'none';
+  // Clear and hide message
+  const messageEl = document.getElementById('loginMessage');
+  messageEl.textContent = '';
+  messageEl.style.display = 'none';
 }
 
 // ============ LOGIN FORM HANDLING ============
@@ -525,12 +613,20 @@ function generateMembershipNumber() {
 }
 
 function getStoredMembers() {
+  if (USE_BACKEND) {
+    return backendCache.members || [];
+  }
   const raw = localStorage.getItem(STORAGE_KEY);
   return raw ? JSON.parse(raw) : [];
 }
 
 function saveMembers(members) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(members));
+  if (USE_BACKEND) {
+    backendCache.members = members;
+  }
+  if (!USE_BACKEND) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(members));
+  }
 }
 
 function showMessage(text) {
@@ -871,12 +967,20 @@ document.querySelector('.detail-close').addEventListener('click', closeMemberDet
 
 // Tithe Management
 function getStoredTithes() {
+  if (USE_BACKEND) {
+    return backendCache.tithes || [];
+  }
   const raw = localStorage.getItem(TITHE_STORAGE_KEY);
   return raw ? JSON.parse(raw) : [];
 }
 
 function saveTithes(tithes) {
-  localStorage.setItem(TITHE_STORAGE_KEY, JSON.stringify(tithes));
+  if (USE_BACKEND) {
+    backendCache.tithes = tithes;
+  }
+  if (!USE_BACKEND) {
+    localStorage.setItem(TITHE_STORAGE_KEY, JSON.stringify(tithes));
+  }
 }
 
 // Context Menu for Deletion
@@ -1094,7 +1198,11 @@ memberForm.addEventListener('submit', async (event) => {
 });
 
 if (USE_BACKEND) {
-  fetchMembersFromBackend().then(renderMembers).catch(() => renderMembers());
+  loadBackendData().then(() => {
+    fetchMembersFromBackend().then(renderMembers).catch(() => renderMembers());
+  }).catch(() => {
+    fetchMembersFromBackend().then(renderMembers).catch(() => renderMembers());
+  });
 } else {
   renderMembers();
 }
@@ -1105,12 +1213,20 @@ const inventoryTableBody = document.querySelector('#inventoryTable tbody');
 const inventoryMessage = document.getElementById('inventoryMessage');
 
 function getStoredInventory() {
+  if (USE_BACKEND) {
+    return backendCache.inventory || [];
+  }
   const raw = localStorage.getItem(INVENTORY_STORAGE_KEY);
   return raw ? JSON.parse(raw) : [];
 }
 
 function saveInventory(items) {
-  localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(items));
+  if (USE_BACKEND) {
+    backendCache.inventory = items;
+  }
+  if (!USE_BACKEND) {
+    localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(items));
+  }
 }
 
 function renderInventory() {
@@ -1133,7 +1249,7 @@ function renderInventory() {
   });
 }
 
-inventoryForm.addEventListener('submit', (event) => {
+inventoryForm.addEventListener('submit', async (event) => {
   event.preventDefault();
 
   if (currentUser && currentUser.role === 'member') {
@@ -1158,10 +1274,22 @@ inventoryForm.addEventListener('submit', (event) => {
   }
 
   const newItem = { itemName, quantity: parseInt(quantity), location };
-  const items = getStoredInventory();
-  items.push(newItem);
-  saveInventory(items);
-  renderInventory();
+  if (USE_BACKEND) {
+    try {
+      await createRecordInBackend('inventory', newItem);
+      await loadBackendData();
+      renderInventory();
+    } catch (error) {
+      inventoryMessage.textContent = error.message || 'Failed to add item';
+      setTimeout(() => { inventoryMessage.textContent = ''; }, 3000);
+      return;
+    }
+  } else {
+    const items = getStoredInventory();
+    items.push(newItem);
+    saveInventory(items);
+    renderInventory();
+  }
 
   inventoryForm.reset();
   inventoryMessage.textContent = 'Item added successfully.';
@@ -1178,12 +1306,20 @@ const projectMemberSearchResults = document.getElementById('projectMemberSearchR
 const projectMember = document.getElementById('projectMember');
 
 function getStoredProjectGiving() {
+  if (USE_BACKEND) {
+    return backendCache.projectGiving || [];
+  }
   const raw = localStorage.getItem(PROJECT_GIVING_STORAGE_KEY);
   return raw ? JSON.parse(raw) : [];
 }
 
 function saveProjectGiving(records) {
-  localStorage.setItem(PROJECT_GIVING_STORAGE_KEY, JSON.stringify(records));
+  if (USE_BACKEND) {
+    backendCache.projectGiving = records;
+  }
+  if (!USE_BACKEND) {
+    localStorage.setItem(PROJECT_GIVING_STORAGE_KEY, JSON.stringify(records));
+  }
 }
 
 function searchMembers(query) {
@@ -1310,7 +1446,7 @@ document.addEventListener('click', (e) => {
   }
 });
 
-projectForm.addEventListener('submit', (event) => {
+projectForm.addEventListener('submit', async (event) => {
   event.preventDefault();
 
   if (currentUser && currentUser.role === 'member') {
@@ -1350,14 +1486,27 @@ projectForm.addEventListener('submit', (event) => {
     date,
   };
 
-  const records = getStoredProjectGiving();
-  records.push(newRecord);
-  saveProjectGiving(records);
-  renderProjectGiving();
-  
-  // Refresh member details if currently viewing
-  if (currentSelectedMember && currentSelectedMember.membershipNumber === selectedMemberId) {
-    showMemberDetails(currentSelectedMember);
+  if (USE_BACKEND) {
+    try {
+      await createRecordInBackend('projectGiving', newRecord);
+      await loadBackendData();
+      renderProjectGiving();
+      if (currentSelectedMember && currentSelectedMember.membershipNumber === selectedMemberId) {
+        showMemberDetails(currentSelectedMember);
+      }
+    } catch (error) {
+      projectMessage.textContent = error.message || 'Failed to record project giving.';
+      setTimeout(() => { projectMessage.textContent = ''; }, 3000);
+      return;
+    }
+  } else {
+    const records = getStoredProjectGiving();
+    records.push(newRecord);
+    saveProjectGiving(records);
+    renderProjectGiving();
+    if (currentSelectedMember && currentSelectedMember.membershipNumber === selectedMemberId) {
+      showMemberDetails(currentSelectedMember);
+    }
   }
 
   projectForm.reset();
@@ -1386,12 +1535,20 @@ const welfareContributorSearchResults = document.getElementById('welfareContribu
 const welfareContributor = document.getElementById('welfareContributor');
 
 function getStoredWelfare() {
+  if (USE_BACKEND) {
+    return backendCache.welfare || [];
+  }
   const raw = localStorage.getItem(WELFARE_STORAGE_KEY);
   return raw ? JSON.parse(raw) : [];
 }
 
 function saveWelfare(records) {
-  localStorage.setItem(WELFARE_STORAGE_KEY, JSON.stringify(records));
+  if (USE_BACKEND) {
+    backendCache.welfare = records;
+  }
+  if (!USE_BACKEND) {
+    localStorage.setItem(WELFARE_STORAGE_KEY, JSON.stringify(records));
+  }
 }
 
 function renderWelfareMemberSearch(results, target) {
@@ -1508,7 +1665,7 @@ welfareContributorSearch.addEventListener('input', (e) => {
   renderWelfareMemberSearch(results, 'welfareContributorSearchResults');
 });
 
-welfareForm.addEventListener('submit', (event) => {
+welfareForm.addEventListener('submit', async (event) => {
   event.preventDefault();
 
   // SECURITY: Block members from recording welfare
@@ -1555,10 +1712,22 @@ welfareForm.addEventListener('submit', (event) => {
     date,
   };
 
-  const records = getStoredWelfare();
-  records.push(newRecord);
-  saveWelfare(records);
-  renderWelfare();
+  if (USE_BACKEND) {
+    try {
+      await createRecordInBackend('welfare', newRecord);
+      await loadBackendData();
+      renderWelfare();
+    } catch (error) {
+      welfareMessage.textContent = error.message || 'Failed to save welfare record.';
+      setTimeout(() => { welfareMessage.textContent = ''; }, 3000);
+      return;
+    }
+  } else {
+    const records = getStoredWelfare();
+    records.push(newRecord);
+    saveWelfare(records);
+    renderWelfare();
+  }
 
   welfareForm.reset();
   welfareBeneficiary.value = '';
@@ -1583,11 +1752,18 @@ const expenseForm = document.getElementById('expenseForm');
 const expenseMessage = document.getElementById('expenseMessage');
 
 function getStoredExpenses() {
+  if (USE_BACKEND) {
+    return backendCache.expenses || [];
+  }
   const raw = localStorage.getItem(EXPENSE_STORAGE_KEY);
   return raw ? JSON.parse(raw) : [];
 }
 
 function saveExpenses(expenses) {
+  if (USE_BACKEND) {
+    backendCache.expenses = expenses;
+    return;
+  }
   localStorage.setItem(EXPENSE_STORAGE_KEY, JSON.stringify(expenses));
 }
 
@@ -1661,7 +1837,7 @@ function renderExpenses() {
   });
 }
 
-expenseForm.addEventListener('submit', (event) => {
+expenseForm.addEventListener('submit', async (event) => {
   event.preventDefault();
 
   if (currentUser && currentUser.role === 'member') {
@@ -1693,11 +1869,24 @@ expenseForm.addEventListener('submit', (event) => {
     notes: notes || '',
   };
 
-  const expenses = getStoredExpenses();
-  expenses.push(newExpense);
-  saveExpenses(expenses);
-  renderExpenses();
-  renderChurchGiving();
+  if (USE_BACKEND) {
+    try {
+      await createRecordInBackend('expenses', newExpense);
+      await loadBackendData();
+      renderExpenses();
+      renderChurchGiving();
+    } catch (error) {
+      expenseMessage.textContent = error.message || 'Failed to record expense.';
+      setTimeout(() => { expenseMessage.textContent = ''; }, 3000);
+      return;
+    }
+  } else {
+    const expenses = getStoredExpenses();
+    expenses.push(newExpense);
+    saveExpenses(expenses);
+    renderExpenses();
+    renderChurchGiving();
+  }
 
   expenseForm.reset();
   expenseMessage.textContent = 'Expense recorded successfully.';
@@ -1718,11 +1907,18 @@ const givingType = document.getElementById('givingType');
 const givingAmount = document.getElementById('givingAmount');
 
 function getStoredChurchGiving() {
+  if (USE_BACKEND) {
+    return backendCache.churchGiving || [];
+  }
   const raw = localStorage.getItem(CHURCH_GIVING_STORAGE_KEY);
   return raw ? JSON.parse(raw) : [];
 }
 
 function saveChurchGiving(records) {
+  if (USE_BACKEND) {
+    backendCache.churchGiving = records;
+    return;
+  }
   localStorage.setItem(CHURCH_GIVING_STORAGE_KEY, JSON.stringify(records));
 }
 
@@ -1859,7 +2055,7 @@ givingType.addEventListener('change', (e) => {
   }
 });
 
-churchGivingForm.addEventListener('submit', (event) => {
+churchGivingForm.addEventListener('submit', async (event) => {
   event.preventDefault();
 
   if (currentUser && currentUser.role === 'member') {
@@ -1907,10 +2103,22 @@ churchGivingForm.addEventListener('submit', (event) => {
     notes: notes || '',
   };
 
-  const records = getStoredChurchGiving();
-  records.push(newRecord);
-  saveChurchGiving(records);
-  renderChurchGiving();
+  if (USE_BACKEND) {
+    try {
+      await createRecordInBackend('churchGiving', newRecord);
+      await loadBackendData();
+      renderChurchGiving();
+    } catch (error) {
+      givingMessage.textContent = error.message || 'Failed to record church giving.';
+      setTimeout(() => { givingMessage.textContent = ''; }, 3000);
+      return;
+    }
+  } else {
+    const records = getStoredChurchGiving();
+    records.push(newRecord);
+    saveChurchGiving(records);
+    renderChurchGiving();
+  }
 
   churchGivingForm.reset();
   givingMessage.textContent = 'Church giving recorded successfully.';
@@ -1933,6 +2141,26 @@ const attendanceSundaySchool = document.getElementById('attendanceSundaySchool')
 const attendanceMessage = document.getElementById('attendanceMessage');
 
 function getStoredAttendance() {
+  if (USE_BACKEND) {
+    const records = backendCache.attendance || [];
+    let updated = false;
+    const normalized = records.map((record, index) => {
+      const baseRecord = {
+        ...record,
+        id: record.id || `${record.date}-${record.adults}-${record.teens}-${record.sundaySchool}-${index}`,
+        createdAt: record.createdAt || record.date,
+        updatedAt: record.updatedAt || record.createdAt || record.date,
+      };
+      if (!record.id || !record.createdAt || !record.updatedAt) {
+        updated = true;
+      }
+      return baseRecord;
+    });
+    if (updated) {
+      saveAttendance(normalized);
+    }
+    return normalized;
+  }
   const raw = localStorage.getItem(ATTENDANCE_STORAGE_KEY);
   const records = raw ? JSON.parse(raw) : [];
   let updated = false;
@@ -1955,7 +2183,12 @@ function getStoredAttendance() {
 }
 
 function saveAttendance(records) {
-  localStorage.setItem(ATTENDANCE_STORAGE_KEY, JSON.stringify(records));
+  if (USE_BACKEND) {
+    backendCache.attendance = records;
+  }
+  if (!USE_BACKEND) {
+    localStorage.setItem(ATTENDANCE_STORAGE_KEY, JSON.stringify(records));
+  }
 }
 
 function renderAttendance() {
@@ -2045,44 +2278,62 @@ attendanceForm.addEventListener('submit', (event) => {
     return;
   }
 
-  const now = new Date().toISOString();
-  const newAttendance = {
-    id: currentAttendanceEditId || `${date}-${adults}-${teens}-${sundaySchool}-${Date.now()}`,
-    date,
-    adults: parseInt(adults, 10),
-    teens: parseInt(teens, 10),
-    sundaySchool: parseInt(sundaySchool, 10),
-    createdAt: currentAttendanceEditId ? undefined : now,
-    updatedAt: now,
-  };
+  (async () => {
+    const now = new Date().toISOString();
+    const newAttendance = {
+      id: currentAttendanceEditId || `${date}-${adults}-${teens}-${sundaySchool}-${Date.now()}`,
+      date,
+      adults: parseInt(adults, 10),
+      teens: parseInt(teens, 10),
+      sundaySchool: parseInt(sundaySchool, 10),
+      createdAt: currentAttendanceEditId ? undefined : now,
+      updatedAt: now,
+    };
 
-  const records = getStoredAttendance();
-
-  if (currentAttendanceEditId) {
-    const updatedRecords = records.map((record) => {
-      if (record.id === currentAttendanceEditId) {
-        return {
-          ...record,
-          date,
-          adults: parseInt(adults, 10),
-          teens: parseInt(teens, 10),
-          sundaySchool: parseInt(sundaySchool, 10),
-          updatedAt: now,
-        };
+    if (USE_BACKEND) {
+      try {
+        if (currentAttendanceEditId) {
+          await updateRecordInBackend('attendance', currentAttendanceEditId, newAttendance);
+          attendanceMessage.textContent = 'Attendance updated successfully.';
+        } else {
+          await createRecordInBackend('attendance', newAttendance);
+          attendanceMessage.textContent = 'Attendance recorded successfully.';
+        }
+        await loadBackendData();
+      } catch (error) {
+        attendanceMessage.textContent = error.message || 'Failed to save attendance.';
+        setTimeout(() => { attendanceMessage.textContent = ''; }, 3000);
+        return;
       }
-      return record;
-    });
-    saveAttendance(updatedRecords);
-    attendanceMessage.textContent = 'Attendance updated successfully.';
-  } else {
-    records.push(newAttendance);
-    saveAttendance(records);
-    attendanceMessage.textContent = 'Attendance recorded successfully.';
-  }
+    } else {
+      const records = getStoredAttendance();
+      if (currentAttendanceEditId) {
+        const updatedRecords = records.map((record) => {
+          if (record.id === currentAttendanceEditId) {
+            return {
+              ...record,
+              date,
+              adults: parseInt(adults, 10),
+              teens: parseInt(teens, 10),
+              sundaySchool: parseInt(sundaySchool, 10),
+              updatedAt: now,
+            };
+          }
+          return record;
+        });
+        saveAttendance(updatedRecords);
+        attendanceMessage.textContent = 'Attendance updated successfully.';
+      } else {
+        records.push(newAttendance);
+        saveAttendance(records);
+        attendanceMessage.textContent = 'Attendance recorded successfully.';
+      }
+    }
 
-  renderAttendance();
-  resetAttendanceForm();
-  setTimeout(() => { attendanceMessage.textContent = ''; }, 3000);
+    renderAttendance();
+    resetAttendanceForm();
+    setTimeout(() => { attendanceMessage.textContent = ''; }, 3000);
+  })();
 });
 
 document.getElementById('closeAttendanceForm').addEventListener('click', (e) => {
@@ -2216,7 +2467,7 @@ titheMemberSearch.addEventListener('input', (e) => {
   renderTitheMemberSearch(results, 'titheMemberSearchResults');
 });
 
-titheTabForm.addEventListener('submit', (event) => {
+titheTabForm.addEventListener('submit', async (event) => {
   event.preventDefault();
 
   if (currentUser && currentUser.role === 'member') {
@@ -2255,15 +2506,29 @@ titheTabForm.addEventListener('submit', (event) => {
     date,
   };
 
-  const tithes = getStoredTithes();
-  tithes.push(newTithe);
-  saveTithes(tithes);
-  renderTitheTab();
-  updateDashboard();
-  
-  // Refresh member details if currently viewing
-  if (currentSelectedMember && currentSelectedMember.membershipNumber === selectedMemberId) {
-    showMemberDetails(currentSelectedMember);
+  if (USE_BACKEND) {
+    try {
+      await createRecordInBackend('tithes', newTithe);
+      await loadBackendData();
+      renderTitheTab();
+      updateDashboard();
+      if (currentSelectedMember && currentSelectedMember.membershipNumber === selectedMemberId) {
+        showMemberDetails(currentSelectedMember);
+      }
+    } catch (error) {
+      titheMessage.textContent = error.message || 'Failed to record tithe.';
+      setTimeout(() => { titheMessage.textContent = ''; }, 3000);
+      return;
+    }
+  } else {
+    const tithes = getStoredTithes();
+    tithes.push(newTithe);
+    saveTithes(tithes);
+    renderTitheTab();
+    updateDashboard();
+    if (currentSelectedMember && currentSelectedMember.membershipNumber === selectedMemberId) {
+      showMemberDetails(currentSelectedMember);
+    }
   }
 
   titheTabForm.reset();
@@ -2289,11 +2554,18 @@ const departmentMessage = document.getElementById('departmentMessage');
 let currentOpenDepartment = null;
 
 function getStoredDepartmentContributions() {
+  if (USE_BACKEND) {
+    return backendCache.departmentContributions || [];
+  }
   const raw = localStorage.getItem(DEPARTMENT_CONTRIBUTION_STORAGE_KEY);
   return raw ? JSON.parse(raw) : [];
 }
 
 function saveDepartmentContributions(records) {
+  if (USE_BACKEND) {
+    backendCache.departmentContributions = records;
+    return;
+  }
   localStorage.setItem(DEPARTMENT_CONTRIBUTION_STORAGE_KEY, JSON.stringify(records));
 }
 
@@ -2517,7 +2789,7 @@ function renderDepartmentContributions() {
   renderDepartmentBalances();
 }
 
-departmentContributionForm.addEventListener('submit', (event) => {
+departmentContributionForm.addEventListener('submit', async (event) => {
   event.preventDefault();
 
   if (currentUser && currentUser.role === 'member') {
@@ -2551,10 +2823,22 @@ departmentContributionForm.addEventListener('submit', (event) => {
     notes: notes || '',
   };
 
-  const records = getStoredDepartmentContributions();
-  records.push(newRecord);
-  saveDepartmentContributions(records);
-  renderDepartmentContributions();
+  if (USE_BACKEND) {
+    try {
+      await createRecordInBackend('departmentContributions', newRecord);
+      await loadBackendData();
+      renderDepartmentContributions();
+    } catch (error) {
+      departmentMessage.textContent = error.message || 'Failed to record department contribution.';
+      setTimeout(() => { departmentMessage.textContent = ''; }, 3000);
+      return;
+    }
+  } else {
+    const records = getStoredDepartmentContributions();
+    records.push(newRecord);
+    saveDepartmentContributions(records);
+    renderDepartmentContributions();
+  }
 
   departmentContributionForm.reset();
   departmentMessage.textContent = 'Department contribution recorded successfully.';

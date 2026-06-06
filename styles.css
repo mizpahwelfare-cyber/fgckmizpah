@@ -526,3 +526,71 @@ select:disabled {
     color: var(--muted);
   }
 }
+
+/* Improved responsive behavior for small and very small devices */
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .sidebar {
+    order: 2;
+    width: 100%;
+  }
+
+  .content {
+    order: 1;
+  }
+
+  .container {
+    margin: 16px auto;
+    padding: 0 12px;
+  }
+
+  .members-layout {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .card {
+    padding: 16px;
+  }
+
+  .tab-btn {
+    padding: 10px 12px;
+    font-size: 0.95rem;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    font-size: 1rem;
+    padding: 12px 14px;
+  }
+
+  .detail-panel {
+    min-height: auto;
+  }
+}
+
+@media (max-width: 420px) {
+  /* Make action buttons full-width for easier tapping on very small phones */
+  button {
+    padding: 14px 18px;
+    width: 100%;
+    border-radius: 12px;
+    font-size: 1rem;
+  }
+
+  .tabs {
+    gap: 6px;
+  }
+
+  .tab-btn {
+    flex: 1 1 auto;
+    text-align: center;
+    white-space: nowrap;
+  }
+}

@@ -7,7 +7,7 @@ A simple online church member registration system built with HTML, CSS, and Java
 - Register members with Name, Phone Number, Group, and Date Joined
 - Automatically generate membership numbers in the format `MIZ-26/000`
 - List registered members on the page
-- Data persists in the browser using localStorage
+- Data persists on the server using the backend database when `POSTGRES_URL`/`DATABASE_URL` is configured, with same-origin API support by default
 
 ## Usage
 
@@ -129,7 +129,7 @@ npm start
 
 ### Backend server
 
-A Node/Express backend has been added to store members and records on disk or in a remote MongoDB database.
+A Node/Express backend has been added to store members and records on disk or in a remote PostgreSQL database.
 
 Run the backend locally with:
 
@@ -155,25 +155,31 @@ The backend exposes the following example API endpoints:
 - `GET /api/backup`
 - `POST /api/import` (upload JSON/Excel file)
 
-#### Use a remote MongoDB database
+#### Use a remote PostgreSQL database
 
-To make members entered on one device appear on all devices, connect the backend to a shared MongoDB database.
+To make members entered on one device appear on all devices, connect the backend to a shared PostgreSQL database.
 
-1. Create a MongoDB Atlas cluster or add a MongoDB database service on Railway.
-2. Copy the connection URI.
-3. Add the environment variable `MONGODB_URI` to your deployment or local `.env` file.
-4. Optionally set `MONGODB_DB` to control the database name. The default is `mizpah-online`.
+1. Create a PostgreSQL database service on Railway, Render, Heroku, or another provider.
+2. Copy the connection URL.
+3. Add the environment variable `POSTGRES_URL` or `DATABASE_URL` to your deployment or local `.env` file.
+4. Optionally set `PGDATABASE` or `POSTGRES_DB` to control the database name. The default is `mizpah-online`.
 
 Example `.env` values:
 
 ```text
-MONGODB_URI=mongodb+srv://<user>:<password>@cluster0.mongodb.net/mizpah-online?retryWrites=true&w=majority
-MONGODB_DB=mizpah-online
+POSTGRES_URL=postgres://<user>:<password>@<host>:<port>/mizpah-online
+POSTGRES_DB=mizpah-online
 ```
 
-When `MONGODB_URI` is configured, the backend stores members and other records in MongoDB instead of the local `data/db.json` file.
+When `POSTGRES_URL` or `DATABASE_URL` is configured, the backend stores members and other records in PostgreSQL instead of the local `data/db.json` file.
 
-> Note: If you deploy to Railway or Render, set the `MONGODB_URI` variable in the project settings.
+#### Require database-only mode
+
+If you want the server to refuse any writes unless PostgreSQL is configured (to guarantee all data is stored in the DB), set the environment variable `ENFORCE_DB=true` before starting the server. In this mode the server will return HTTP 503 for API write requests when `POSTGRES_URL` is not set.
+
+Also note the front-end now defaults to using the backend API for all persistence. To opt out for local testing, set `window.DISABLE_BACKEND = true` in the browser console before interacting with the UI.
+
+> Note: If you deploy to Railway or Render, set `POSTGRES_URL` or `DATABASE_URL` in the project settings.
 
 > Note: GitHub Pages cannot execute server code; use Render, Railway, Heroku, or a similar Node host for the backend.
 
