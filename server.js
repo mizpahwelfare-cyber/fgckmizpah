@@ -10,8 +10,18 @@ const { MongoClient } = require('mongodb');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
-const MONGO_URI = process.env.MONGODB_URI?.trim() || '';
-const MONGO_DB_NAME = process.env.MONGODB_DB?.trim() || 'mizpah-online';
+
+function normalizeEnvVar(value) {
+  if (!value || typeof value !== 'string') return '';
+  let result = value.trim();
+  if ((result.startsWith('"') && result.endsWith('"')) || (result.startsWith("'") && result.endsWith("'"))) {
+    result = result.slice(1, -1).trim();
+  }
+  return result;
+}
+
+const MONGO_URI = normalizeEnvVar(process.env.MONGODB_URI);
+const MONGO_DB_NAME = normalizeEnvVar(process.env.MONGODB_DB) || 'mizpah-online';
 const DATA_DIR = path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 let useMongo = Boolean(MONGO_URI);
@@ -74,9 +84,8 @@ async function connectMongo() {
   if (!useMongo) return;
   try {
     mongoClient = new MongoClient(MONGO_URI, {
-      tls: true,
       connectTimeoutMS: 10000,
-      serverApi: '1'
+      serverSelectionTimeoutMS: 10000
     });
     await mongoClient.connect();
     mongoDb = mongoClient.db(MONGO_DB_NAME);
