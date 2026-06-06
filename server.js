@@ -349,6 +349,29 @@ app.post('/api/import', upload.single('file'), async (req, res) => {
   res.json({ success: true, added });
 });
 
+
+const recordTypes = ['inventory', 'projectGiving', 'tithes', 'attendance', 'welfare', 'churchGiving', 'departmentContributions', 'expenses'];
+
+app.get('/api/records/:type', async (req, res) => {
+  const type = req.params.type;
+  if (!recordTypes.includes(type)) {
+    return res.status(400).json({ error: `Record type must be one of: ${recordTypes.join(', ')}` });
+  }
+  const records = await findAll(type);
+  res.json(records);
+});
+
+app.post('/api/records/:type', async (req, res) => {
+  const type = req.params.type;
+  if (!recordTypes.includes(type)) {
+    return res.status(400).json({ error: `Record type must be one of: ${recordTypes.join(', ')}` });
+  }
+
+  const record = { id: `${type}-${Date.now()}`, ...req.body, createdAt: new Date().toISOString() };
+  await insertOne(type, record);
+  res.status(201).json(record);
+});
+
 async function startServer() {
   if (useMongo) {
     await connectMongo();
@@ -364,39 +387,12 @@ process.on('SIGINT', async () => {
   process.exit(0);
 });
 
+process.on('SIGTERM', async () => {
+  await closeMongo();
+  process.exit(0);
+});
+
 startServer().catch((error) => {
   console.error('Failed to start server:', error);
   process.exit(1);
-});
-
-app.get('/api/records/:type', (req, res) => {
-  const type = req.params.type;
-  const validTypes = ['inventory', 'projectGiving', 'tithes', 'attendance', 'welfare', 'churchGiving', 'departmentContributions', 'expenses'];
-  if (!validTypes.includes(type)) {
-    return res.status(400).json({ error: `Record type must be one of: ${validTypes.join(', ')}` });
-  }
-  const { data } = getCollection(type);
-  res.json(data);
-});
-
-app.post('/api/records/:type', (req, res) => {
-  const type = req.params.type;
-  const validTypes = ['inventory', 'projectGiving', 'tithes', 'attendance', 'welfare', 'churchGiving', 'departmentContributions', 'expenses'];
-  if (!validTypes.includes(type)) {
-    return res.status(400).json({ error: `Record type must be one of: ${validTypes.join(', ')}` });
-  }
-
-  const { db, data } = getCollection(type);
-  const record = { id: `${type}-${Date.now()}`, ...req.body, createdAt: new Date().toISOString() };
-  data.push(record);
-  saveDb(db);
-  res.status(201).json(record);
-});
-
-app.get('/api/health', (req, res) => {
-  res.json({ healthy: true, timestamp: new Date().toISOString() });
-});
-
-app.listen(PORT, HOST, () => {
-  console.log(`Mizpah backend running on http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
 });
