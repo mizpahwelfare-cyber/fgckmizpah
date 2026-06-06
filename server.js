@@ -26,6 +26,15 @@ const DATA_DIR = path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 let useMongo = Boolean(MONGO_URI);
 
+function maskValue(value) {
+  if (!value) return 'not set';
+  return `${value.slice(0, 10)}...${value.slice(-10)}`;
+}
+
+console.log(`MongoDB configured: ${Boolean(MONGO_URI)}`);
+console.log(`MongoDB DB name: ${MONGO_DB_NAME}`);
+console.log(`MONGODB_URI mask: ${maskValue(MONGO_URI)}`);
+
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const collectionTypes = [
@@ -282,6 +291,8 @@ app.get('/api/status', (req, res) => {
     status: 'ok',
     version: '1.0.0',
     database: useMongo && mongoDb ? 'mongodb' : 'local-json',
+    mongoConfigured: Boolean(MONGO_URI),
+    mongoDbName: MONGO_DB_NAME,
     timestamp: new Date().toISOString()
   });
 });
