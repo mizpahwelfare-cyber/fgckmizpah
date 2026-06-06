@@ -748,14 +748,16 @@ function showMemberContributionBreakdown(type) {
   setupActionButtons(member);
 }
 
-function updateTabVisibility() {
+function showMemberDetails(member) {
+  if (!member) return;
+
   const detailPanel = document.getElementById('detailPanel');
   const memberDetails = document.getElementById('memberDetails');
 
   const isOwnMember = currentUser && currentUser.role === 'member' && currentUser.membershipNumber === member.membershipNumber;
-  const canViewContributions = isOwnMember || hasPermission('canViewTithe');
+  const canViewContributions = isOwnMember || hasPermission('canViewTithe') || hasPermission('canViewProjectGiving');
   const contributionsHTML = canViewContributions ? renderMemberContributions(member.membershipNumber) : '';
-  
+
   memberDetails.innerHTML = `
     <h3>${member.name}</h3>
     <div class="detail-field">
@@ -778,7 +780,6 @@ function updateTabVisibility() {
       <div class="detail-field-label">Date Joined</div>
       <div class="detail-field-value">${member.dateJoined}</div>
     </div>
-    
     ${canViewContributions ? `
     <div class="contribution-section">
       <h4>Contributions (Tithes & Project Giving)</h4>
