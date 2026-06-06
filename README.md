@@ -129,7 +129,7 @@ npm start
 
 ### Backend server
 
-A Node/Express backend has been added to store members and records on disk instead of only in browser storage.
+A Node/Express backend has been added to store members and records on disk or in a remote MongoDB database.
 
 Run the backend locally with:
 
@@ -155,5 +155,25 @@ The backend exposes the following example API endpoints:
 - `GET /api/backup`
 - `POST /api/import` (upload JSON/Excel file)
 
-> Note: This backend runs locally or on any Node-compatible host. GitHub Pages cannot execute server code.
+#### Use a remote MongoDB database
+
+To make members entered on one device appear on all devices, connect the backend to a shared MongoDB database.
+
+1. Create a MongoDB Atlas cluster or add a MongoDB database service on Railway.
+2. Copy the connection URI.
+3. Add the environment variable `MONGODB_URI` to your deployment or local `.env` file.
+4. Optionally set `MONGODB_DB` to control the database name. The default is `mizpah-online`.
+
+Example `.env` values:
+
+```text
+MONGODB_URI=mongodb+srv://<user>:<password>@cluster0.mongodb.net/mizpah-online?retryWrites=true&w=majority
+MONGODB_DB=mizpah-online
+```
+
+When `MONGODB_URI` is configured, the backend stores members and other records in MongoDB instead of the local `data/db.json` file.
+
+> Note: If you deploy to Railway or Render, set the `MONGODB_URI` variable in the project settings.
+
+> Note: GitHub Pages cannot execute server code; use Render, Railway, Heroku, or a similar Node host for the backend.
 

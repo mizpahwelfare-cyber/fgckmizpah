@@ -1,17 +1,38 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const XLSX = require('xlsx');
+const { MongoClient } = require('mongodb');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
+const MONGO_URI = process.env.MONGODB_URI || '';
+const MONGO_DB_NAME = process.env.MONGODB_DB || 'mizpah-online';
 const DATA_DIR = path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
+const useMongo = Boolean(MONGO_URI);
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+const collectionTypes = [
+  'members',
+  'inventory',
+  'projectGiving',
+  'tithes',
+  'attendance',
+  'welfare',
+  'churchGiving',
+  'departmentContributions',
+  'expenses',
+  'backups'
+];
+
+let mongoClient = null;
+let mongoDb = null;
 
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) {
@@ -34,23 +55,41 @@ function createInitialDb() {
   };
 }
 
-function loadDb() {
+function loadLocalDb() {
   ensureDataDir();
   if (!fs.existsSync(DB_FILE)) {
-    saveDb(createInitialDb());
+    saveLocalDb(createInitialDb());
   }
   const contents = fs.readFileSync(DB_FILE, 'utf-8');
   return JSON.parse(contents || JSON.stringify(createInitialDb()));
 }
 
-function saveDb(db) {
+function saveLocalDb(db) {
   ensureDataDir();
   fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf-8');
   return db;
 }
 
-function getCollection(type) {
-  const db = loadDb();
+async function connectMongo() {
+  if (!useMongo) return;
+  try {
+    mongoClient = new MongoClient(MONGO_URI);
+    await mongoClient.connect();
+    mongoDb = mongoClient.db(MONGO_DB_NAME);
+    console.log(`Connected to MongoDB database: ${MONGO_DB_NAME}`);
+  } catch (error) {
+    console.error('MongoDB connection failed:', error.message);
+    process.exit(1);
+  }
+}
+
+async function closeMongo() {
+  if (mongoClient) {
+    await mongoClient.close();
+  }
+}
+
+function getLocalCollection(db, type) {
   const collections = {
     members: db.members,
     inventory: db.inventory,
@@ -60,46 +99,156 @@ function getCollection(type) {
     welfare: db.welfare,
     churchGiving: db.churchGiving,
     departmentContributions: db.departmentContributions,
-    expenses: db.expenses
+    expenses: db.expenses,
+    backups: db.backups
   };
-  return { data: collections[type], db };
+  return collections[type];
 }
 
-function generateMembershipNumber(db) {
-  const last = db.members
+async function getCollection(type) {
+  if (useMongo && mongoDb) {
+    return mongoDb.collection(type);
+  }
+  const db = loadLocalDb();
+  return { local: true, db, data: getLocalCollection(db, type) };
+}
+
+async function findAll(type) {
+  if (useMongo && mongoDb) {
+    const collection = await getCollection(type);
+    return collection.find().toArray();
+  }
+  return loadLocalDb()[type] || [];
+}
+
+async function findOne(type, filter) {
+  if (useMongo && mongoDb) {
+    const collection = await getCollection(type);
+    return collection.findOne(filter);
+  }
+  const db = loadLocalDb();
+  return (db[type] || []).find((item) =>
+    Object.keys(filter).every((key) => item[key] === filter[key])
+  );
+}
+
+async function insertOne(type, item) {
+  if (useMongo && mongoDb) {
+    const collection = await getCollection(type);
+    await collection.insertOne(item);
+    return item;
+  }
+  const db = loadLocalDb();
+  db[type].push(item);
+  saveLocalDb(db);
+  return item;
+}
+
+async function updateOne(type, filter, update) {
+  if (useMongo && mongoDb) {
+    const collection = await getCollection(type);
+    await collection.updateOne(filter, { $set: update });
+    return collection.findOne(filter);
+  }
+  const db = loadLocalDb();
+  const item = (db[type] || []).find((existing) =>
+    Object.keys(filter).every((key) => existing[key] === filter[key])
+  );
+  if (!item) return null;
+  Object.assign(item, update);
+  saveLocalDb(db);
+  return item;
+}
+
+async function deleteOne(type, filter) {
+  if (useMongo && mongoDb) {
+    const collection = await getCollection(type);
+    const item = await collection.findOne(filter);
+    if (!item) return null;
+    await collection.deleteOne(filter);
+    return item;
+  }
+  const db = loadLocalDb();
+  const collection = db[type] || [];
+  const index = collection.findIndex((existing) =>
+    Object.keys(filter).every((key) => existing[key] === filter[key])
+  );
+  if (index === -1) return null;
+  const deleted = collection.splice(index, 1)[0];
+  saveLocalDb(db);
+  return deleted;
+}
+
+async function generateMembershipNumber() {
+  const members = await findAll('members');
+  const last = members
     .map((member) => parseInt(member.membershipNumber.replace(/^MIZ-26\//, ''), 10))
     .filter((num) => !Number.isNaN(num))
     .sort((a, b) => b - a)[0] || 0;
   return `MIZ-26/${String(last + 1).padStart(3, '0')}`;
 }
 
-function mergeImportData(imported, db) {
+async function mergeImportData(imported) {
   const added = {};
-  const types = ['members', 'inventory', 'projectGiving', 'tithes', 'attendance', 'welfare', 'churchGiving', 'departmentContributions', 'expenses'];
+  const types = [
+    'members',
+    'inventory',
+    'projectGiving',
+    'tithes',
+    'attendance',
+    'welfare',
+    'churchGiving',
+    'departmentContributions',
+    'expenses'
+  ];
 
-  types.forEach((type) => {
-    if (Array.isArray(imported[type])) {
+  if (useMongo && mongoDb) {
+    for (const type of types) {
+      if (!Array.isArray(imported[type])) continue;
       added[type] = 0;
-      imported[type].forEach((item) => {
-        const collection = db[type];
-        const isDuplicate = collection.some((existing) => {
-          if (type === 'members') return existing.membershipNumber === item.membershipNumber;
-          return existing.id && item.id ? existing.id === item.id : JSON.stringify(existing) === JSON.stringify(item);
-        });
-        if (!isDuplicate) {
-          collection.push(item);
+      const collection = await getCollection(type);
+
+      for (const item of imported[type]) {
+        const filter =
+          type === 'members'
+            ? { membershipNumber: item.membershipNumber }
+            : item.id
+            ? { id: item.id }
+            : item;
+        const existing = await collection.findOne(filter);
+        if (!existing) {
+          await collection.insertOne(item);
           added[type] += 1;
         }
-      });
+      }
     }
-  });
 
-  db.backups.push({
-    importedAt: new Date().toISOString(),
-    counts: added
-  });
+    const backupCollection = await getCollection('backups');
+    await backupCollection.insertOne({ importedAt: new Date().toISOString(), counts: added });
+    return { added };
+  }
 
-  return { db, added };
+  const db = loadLocalDb();
+  for (const type of types) {
+    if (!Array.isArray(imported[type])) continue;
+    added[type] = 0;
+    const collection = db[type];
+
+    imported[type].forEach((item) => {
+      const isDuplicate = collection.some((existing) => {
+        if (type === 'members') return existing.membershipNumber === item.membershipNumber;
+        return existing.id && item.id ? existing.id === item.id : JSON.stringify(existing) === JSON.stringify(item);
+      });
+      if (!isDuplicate) {
+        collection.push(item);
+        added[type] += 1;
+      }
+    });
+  }
+
+  db.backups.push({ importedAt: new Date().toISOString(), counts: added });
+  saveLocalDb(db);
+  return { added };
 }
 
 function parseExcelBuffer(buffer) {
@@ -115,30 +264,34 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname)));
 
 app.get('/api/status', (req, res) => {
-  res.json({ status: 'ok', version: '1.0.0', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    version: '1.0.0',
+    database: useMongo ? 'mongodb' : 'local-json',
+    timestamp: new Date().toISOString()
+  });
 });
 
-app.get('/api/members', (req, res) => {
-  const db = loadDb();
-  res.json(db.members);
+app.get('/api/members', async (req, res) => {
+  const members = await findAll('members');
+  res.json(members);
 });
 
-app.get('/api/members/:id', (req, res) => {
-  const db = loadDb();
-  const member = db.members.find((item) => item.membershipNumber === req.params.id);
+app.get('/api/members/:id', async (req, res) => {
+  const member = await findOne('members', { membershipNumber: req.params.id });
   if (!member) return res.status(404).json({ error: 'Member not found' });
   res.json(member);
 });
 
-app.post('/api/members', (req, res) => {
-  const db = loadDb();
+app.post('/api/members', async (req, res) => {
   const { membershipNumber, name, phone, gender, group, dateJoined } = req.body;
   if (!name || !phone) {
     return res.status(400).json({ error: 'Member name and phone are required.' });
   }
 
-  const memberNumber = membershipNumber || generateMembershipNumber(db);
-  if (db.members.some((item) => item.membershipNumber === memberNumber)) {
+  const memberNumber = membershipNumber || (await generateMembershipNumber());
+  const existing = await findOne('members', { membershipNumber: memberNumber });
+  if (existing) {
     return res.status(409).json({ error: 'Membership number already exists.' });
   }
 
@@ -151,36 +304,35 @@ app.post('/api/members', (req, res) => {
     dateJoined: dateJoined || new Date().toISOString().slice(0, 10),
     createdAt: new Date().toISOString()
   };
-  db.members.push(member);
-  saveDb(db);
+
+  await insertOne('members', member);
   res.status(201).json(member);
 });
 
-app.put('/api/members/:id', (req, res) => {
-  const db = loadDb();
-  const member = db.members.find((item) => item.membershipNumber === req.params.id);
-  if (!member) return res.status(404).json({ error: 'Member not found' });
-
-  Object.assign(member, req.body);
-  saveDb(db);
-  res.json(member);
+app.put('/api/members/:id', async (req, res) => {
+  const updated = await updateOne('members', { membershipNumber: req.params.id }, req.body);
+  if (!updated) return res.status(404).json({ error: 'Member not found' });
+  res.json(updated);
 });
 
-app.delete('/api/members/:id', (req, res) => {
-  const db = loadDb();
-  const index = db.members.findIndex((item) => item.membershipNumber === req.params.id);
-  if (index === -1) return res.status(404).json({ error: 'Member not found' });
-  const deleted = db.members.splice(index, 1)[0];
-  saveDb(db);
+app.delete('/api/members/:id', async (req, res) => {
+  const deleted = await deleteOne('members', { membershipNumber: req.params.id });
+  if (!deleted) return res.status(404).json({ error: 'Member not found' });
   res.json(deleted);
 });
 
-app.get('/api/backup', (req, res) => {
-  res.json(loadDb());
+app.get('/api/backup', async (req, res) => {
+  if (useMongo && mongoDb) {
+    const records = {};
+    for (const type of collectionTypes) {
+      records[type] = await findAll(type);
+    }
+    return res.json(records);
+  }
+  res.json(loadLocalDb());
 });
 
-app.post('/api/import', upload.single('file'), (req, res) => {
-  const db = loadDb();
+app.post('/api/import', upload.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'Upload a JSON or Excel file under the field name "file".' });
   }
@@ -193,9 +345,28 @@ app.post('/api/import', upload.single('file'), (req, res) => {
     imported = { members: parseExcelBuffer(req.file.buffer) };
   }
 
-  const { db: mergedDb, added } = mergeImportData(imported, db);
-  saveDb(mergedDb);
+  const { added } = await mergeImportData(imported);
   res.json({ success: true, added });
+});
+
+async function startServer() {
+  if (useMongo) {
+    await connectMongo();
+  }
+
+  app.listen(PORT, HOST, () => {
+    console.log(`Mizpah backend running on http://${HOST}:${PORT}`);
+  });
+}
+
+process.on('SIGINT', async () => {
+  await closeMongo();
+  process.exit(0);
+});
+
+startServer().catch((error) => {
+  console.error('Failed to start server:', error);
+  process.exit(1);
 });
 
 app.get('/api/records/:type', (req, res) => {
