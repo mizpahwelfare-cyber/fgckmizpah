@@ -537,6 +537,108 @@ function ensureLogoutButton() {
   document.getElementById('logoutBtn').addEventListener('click', logout);
 }
 
+// ============ REFRESH DATA FUNCTIONALITY ============
+async function refreshDataFromBackend() {
+  const refreshBtn = document.getElementById('refreshBtn');
+  if (!refreshBtn) return;
+
+  // Disable button and show loading state
+  refreshBtn.disabled = true;
+  const refreshIcon = refreshBtn.querySelector('.refresh-icon');
+  refreshIcon.classList.add('spinning');
+
+  try {
+    // Fetch fresh data from backend
+    await loadBackendData();
+    
+    // Re-render the UI based on current user role
+    if (currentUser) {
+      updateUIForRole();
+      renderMembers();
+    }
+
+    // Show success notification
+    showRefreshNotification('Data updated successfully!', 'success');
+  } catch (error) {
+    console.error('Refresh failed:', error);
+    showRefreshNotification('Failed to refresh data. Please try again.', 'error');
+  } finally {
+    // Re-enable button and remove loading state
+    refreshIcon.classList.remove('spinning');
+    refreshBtn.disabled = false;
+  }
+}
+
+function showRefreshNotification(message, type) {
+  // Create notification element
+  const notification = document.createElement('div');
+  notification.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 16px 24px;
+    background: ${type === 'success' ? '#10b981' : '#ef4444'};
+    color: white;
+    border-radius: 8px;
+    font-weight: 600;
+    z-index: 3000;
+    animation: slideIn 0.3s ease-out;
+    max-width: 300px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  `;
+  notification.textContent = message;
+  document.body.appendChild(notification);
+
+  // Remove notification after 3 seconds
+  setTimeout(() => {
+    notification.style.animation = 'slideOut 0.3s ease-out';
+    setTimeout(() => notification.remove(), 300);
+  }, 3000);
+}
+
+// Add CSS animations for notification
+const style = document.createElement('style');
+style.textContent = `
+  @keyframes slideIn {
+    from {
+      transform: translateX(400px);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+  @keyframes slideOut {
+    from {
+      transform: translateX(0);
+      opacity: 1;
+    }
+    to {
+      transform: translateX(400px);
+      opacity: 0;
+    }
+  }
+`;
+document.head.appendChild(style);
+
+// Set up refresh button event listener - try immediately and on DOMContentLoaded
+function setupRefreshButton() {
+  const refreshBtn = document.getElementById('refreshBtn');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', refreshDataFromBackend);
+    console.log('Refresh button attached');
+  } else {
+    console.warn('Refresh button not found');
+  }
+}
+
+// Try to attach immediately
+setupRefreshButton();
+
+// Also attach on DOMContentLoaded
+document.addEventListener('DOMContentLoaded', setupRefreshButton);
+
 // ============ TAB SWITCHING (Updated) ============
 const tabButtons = document.querySelectorAll('.tab-btn');
 const tabContents = document.querySelectorAll('.tab-content');

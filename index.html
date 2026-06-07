@@ -50,7 +50,12 @@
   </div>
 
   <main class="container" id="appContainer" style="display: none;">
-    <h1>FULL GOSPEL CHURCHES OF KENYA - MIZPAH</h1>
+    <div class="header-wrapper" style="display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px;">
+      <h1 style="margin: 0; flex: 1;">FULL GOSPEL CHURCHES OF KENYA - MIZPAH</h1>
+      <button id="refreshBtn" class="refresh-btn" title="Refresh data from other devices" style="display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; padding: 0; background: #2563eb; border: none; border-radius: 50%; color: white; cursor: pointer; font-size: 1.5rem; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2); flex-shrink: 0;">
+        <span style="display: inline-block; transform: rotate(0deg); transition: transform 0.6s ease;" class="refresh-icon">🔄</span>
+      </button>
+    </div>
 
     <div class="layout">
       <aside class="sidebar card">
@@ -704,7 +709,7 @@
   </main>
 
   <!-- Export Selection Modals -->
-  <div id="monthSelectionModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; justify-content: center; align-items: center;">
+  <div id="monthSelectionModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
     <div style="background: white; border-radius: 8px; padding: 24px; max-width: 400px; width: 90%; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
         <h3 style="margin: 0;">Select Month to Export</h3>
@@ -720,7 +725,7 @@
     </div>
   </div>
 
-  <div id="beneficiarySelectionModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; justify-content: center; align-items: center;">
+  <div id="beneficiarySelectionModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;">
     <div style="background: white; border-radius: 8px; padding: 24px; max-width: 400px; width: 90%; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
         <h3 style="margin: 0;">Select Beneficiary to Export</h3>
