@@ -1009,7 +1009,8 @@ function showMemberDetails(member) {
   const memberDetails = document.getElementById('memberDetails');
 
   const isOwnMember = currentUser && currentUser.role === 'member' && currentUser.membershipNumber === member.membershipNumber;
-  const canViewContributions = isOwnMember || hasPermission('canViewTithe') || hasPermission('canViewProjectGiving');
+  const isElder = currentUser && currentUser.role === 'elder';
+  const canViewContributions = isOwnMember || (!isElder && (hasPermission('canViewTithe') || hasPermission('canViewProjectGiving')));
   const contributionsHTML = canViewContributions ? renderMemberContributions(member.membershipNumber) : '';
 
   memberDetails.innerHTML = `
@@ -2304,54 +2305,29 @@ function renderAttendance() {
   }
 
   attendances.sort((a, b) => new Date(b.date) - new Date(a.date));
-  const { grouped, sorted } = groupContributionsByMonth(attendances);
 
-  sorted.forEach((yearMonth) => {
-    const records = grouped[yearMonth];
-    const totalSessions = records.length;
-    const totalAdults = records.reduce((sum, record) => sum + parseInt(record.adults, 10), 0);
-    const totalTeens = records.reduce((sum, record) => sum + parseInt(record.teens, 10), 0);
-    const totalSundaySchool = records.reduce((sum, record) => sum + parseInt(record.sundaySchool, 10), 0);
-    const formattedMonth = formatMonthYear(yearMonth);
+  attendances.forEach((record) => {
+    const date = new Date(record.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: '2-digit' });
+    const createdAt = new Date(record.createdAt).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' });
+    const updatedAt = record.updatedAt ? new Date(record.updatedAt).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' }) : null;
+    const timestampLabel = updatedAt && updatedAt !== createdAt
+      ? `Updated: ${updatedAt}`
+      : `Created: ${createdAt}`;
 
-    const monthGroup = document.createElement('div');
-    monthGroup.className = 'month-group';
-    monthGroup.innerHTML = `
-      <div class="month-header" onclick="toggleMonth(this)">
-        <div class="month-header-left">
-          <span class="month-toggle">▶</span>
-          <span>${formattedMonth}</span>
-        </div>
-        <div class="month-header-right">${totalSessions} sessions</div>
+    const recordEl = document.createElement('div');
+    recordEl.className = 'contribution-item';
+    recordEl.style.justifyContent = 'space-between';
+    recordEl.style.gap = '12px';
+    recordEl.innerHTML = `
+      <div style="display: flex; flex-direction: column; gap: 4px; width: 100%;">
+        <span class="member-search-name">${date}</span>
+        <span class="contribution-item-date">Adults: ${record.adults} • Teens: ${record.teens} • Sunday School: ${record.sundaySchool}</span>
+        <span style="font-size: 0.8rem; color: var(--muted);">${timestampLabel}</span>
       </div>
-      <div class="month-details">
-        ${records.map((record) => {
-          const date = new Date(record.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: '2-digit' });
-          const createdAt = new Date(record.createdAt).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' });
-          const updatedAt = new Date(record.updatedAt).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' });
-          const timestampLabel = record.updatedAt && record.updatedAt !== record.createdAt
-            ? `Updated: ${updatedAt}`
-            : `Created: ${createdAt}`;
-          return `
-            <div class="contribution-item" style="justify-content: space-between; gap: 12px;">
-              <div style="display: flex; flex-direction: column; gap: 4px;">
-                <span class="member-search-name">${date}</span>
-                <span class="contribution-item-date">Adults: ${record.adults} • Teens: ${record.teens} • Sunday School: ${record.sundaySchool}</span>
-                <span style="font-size: 0.8rem; color: var(--muted);">${timestampLabel}</span>
-              </div>
-              <button type="button" onclick="startAttendanceEdit('${record.id}')" style="padding: 8px 12px; border: none; border-radius: 8px; background: #2563eb; color: white; cursor: pointer;">Edit</button>
-            </div>
-          `;
-        }).join('')}
-        <div class="month-total" style="flex-direction: column; align-items: flex-start; gap: 6px;">
-          <span>Total Adults: ${totalAdults}</span>
-          <span>Total Teens: ${totalTeens}</span>
-          <span>Total Sunday School: ${totalSundaySchool}</span>
-        </div>
-      </div>
+      <button type="button" onclick="startAttendanceEdit('${record.id}')" style="padding: 8px 12px; border: none; border-radius: 8px; background: #2563eb; color: white; cursor: pointer; white-space: nowrap;">Edit</button>
     `;
 
-    attendanceContainer.appendChild(monthGroup);
+    attendanceContainer.appendChild(recordEl);
   });
 }
 
