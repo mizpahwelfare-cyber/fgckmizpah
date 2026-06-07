@@ -38,8 +38,8 @@
         </div>
 
         <div id="memberPasswordFields" style="display: none;">
-          <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Last 3 Digits of Membership No.</label>
-          <input type="password" id="loginMemberPassword" placeholder="e.g., 001" style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1rem; box-sizing: border-box;" maxlength="3" />
+          <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Password / First Login Code</label>
+          <input type="password" id="loginMemberPassword" placeholder="Enter password or last 3 digits" style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 1rem; box-sizing: border-box;" />
         </div>
 
         <div id="loginMessage" style="padding: 12px; border-radius: 6px; text-align: center; display: none; font-weight: 600;"></div>
@@ -69,6 +69,21 @@
               <div><strong>Name:</strong> <span id="memberViewName"></span></div>
               <div><strong>Membership No.:</strong> <span id="memberViewMembershipNo"></span></div>
             </div>
+          </div>
+
+          <div id="memberPasswordSetup" style="display: none; background: #eef2ff; padding: 16px; border-radius: 12px; margin-bottom: 20px;">
+            <h3 style="margin: 0 0 10px 0; color: var(--text);">Secure Your Account</h3>
+            <p style="margin: 0 0 14px 0; color: #334155;">If this is your first login, use the last 3 digits of your membership number to sign in. Then set your own password below.</p>
+            <label style="display: block; margin-bottom: 12px;">
+              New Password
+              <input type="password" id="memberNewPassword" placeholder="Enter new password" style="width: 100%; padding: 12px; border: 2px solid #d1d5db; border-radius: 8px; font-size: 1rem; box-sizing: border-box;" />
+            </label>
+            <label style="display: block; margin-bottom: 14px;">
+              Confirm Password
+              <input type="password" id="memberConfirmPassword" placeholder="Confirm new password" style="width: 100%; padding: 12px; border: 2px solid #d1d5db; border-radius: 8px; font-size: 1rem; box-sizing: border-box;" />
+            </label>
+            <button id="setMemberPasswordBtn" style="padding: 12px 16px; background: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer;">Set Password</button>
+            <div id="memberPasswordMessage" class="message" style="margin-top: 12px;"></div>
           </div>
 
           <div style="background: #f8fafc; padding: 16px; border-radius: 8px;">
@@ -208,13 +223,9 @@
                   <h3 style="margin: 0;">Membership Card</h3>
                   <button id="closeCardModal" style="border: none; background: none; font-size: 1.5rem; cursor: pointer;">×</button>
                 </div>
-                <div id="cardContent" style="padding: 40px 20px; text-align: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 8px; margin: 20px; min-height: 300px; display: flex; flex-direction: column; justify-content: space-between;">
-                  <div>
-                    <h2 style="margin: 0 0 10px 0;">MIZPAH ONLINE</h2>
-                    <p style="margin: 0 0 30px 0; font-size: 0.9rem; opacity: 0.9;">Church Member Card</p>
-                  </div>
-                  <div id="cardInfo"></div>
-                  <button id="printCardBtn" style="padding: 12px 24px; background: white; color: #667eea; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; margin-top: 20px;">Print Card</button>
+                <div id="cardContent" style="padding: 20px; text-align: center; background: transparent; color: white; border-radius: 8px; margin: 20px; min-height: 340px; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                  <div id="cardInfo" class="membership-card-preview"></div>
+                  <button id="printCardBtn" style="padding: 12px 24px; background: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; margin-top: 20px;">Print Card</button>
                 </div>
               </div>
             </div>
@@ -329,6 +340,11 @@
           </div>
           <div id="projectFormContainer" class="form-container">
             <form id="projectForm">
+            <label>
+              Project Name
+              <input type="text" id="projectName" placeholder="Enter project name" required />
+            </label>
+
             <label>
               Member (Search by Name or Membership No.)
               <div style="position: relative;">

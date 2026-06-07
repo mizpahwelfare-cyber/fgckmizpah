@@ -303,19 +303,30 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
       return;
     }
 
-    const lastThreeDigits = membershipNo.slice(-3);
-    if (password !== lastThreeDigits) {
-      messageEl.textContent = 'Invalid password (last 3 digits of membership number).';
-      messageEl.style.background = '#fee';
-      messageEl.style.color = '#c33';
-      return;
+    if (member.passwordHash) {
+      const passwordHash = await hashPassword(password);
+      if (passwordHash !== member.passwordHash) {
+        messageEl.textContent = 'Invalid password.';
+        messageEl.style.background = '#fee';
+        messageEl.style.color = '#c33';
+        return;
+      }
+    } else {
+      const lastThreeDigits = membershipNo.slice(-3);
+      if (password !== lastThreeDigits) {
+        messageEl.textContent = 'Invalid password (last 3 digits of membership number).';
+        messageEl.style.background = '#fee';
+        messageEl.style.color = '#c33';
+        return;
+      }
     }
 
     currentUser = {
       role: 'member',
       membershipNumber: membershipNo,
       memberName: member.name,
-      loginTime: new Date()
+      loginTime: new Date(),
+      needsPasswordSetup: !member.passwordHash,
     };
   } else {
     const password = document.getElementById('loginPassword').value.trim();
@@ -415,8 +426,72 @@ function updateMemberView() {
   const projectTotal = projectGivings.reduce((sum, p) => sum + parseFloat(p.amount), 0);
   document.getElementById('memberViewProjectGiving').textContent = `KES ${projectTotal.toFixed(2)}`;
 
+  renderMemberPasswordSetup(member);
   attachMemberContributionClickHandlers();
 }
+
+function renderMemberPasswordSetup(member) {
+  if (!member || member.passwordHash) {
+    memberPasswordSetup.style.display = 'none';
+    if (memberPasswordMessage) memberPasswordMessage.textContent = '';
+    if (memberNewPassword) memberNewPassword.value = '';
+    if (memberConfirmPassword) memberConfirmPassword.value = '';
+    return;
+  }
+
+  memberPasswordSetup.style.display = 'block';
+}
+
+setMemberPasswordBtn.addEventListener('click', async (event) => {
+  event.preventDefault();
+
+  if (!currentUser || currentUser.role !== 'member') return;
+
+  const newPassword = memberNewPassword.value.trim();
+  const confirmPassword = memberConfirmPassword.value.trim();
+
+  if (!newPassword || !confirmPassword) {
+    memberPasswordMessage.textContent = 'Please enter and confirm your new password.';
+    return;
+  }
+
+  if (newPassword !== confirmPassword) {
+    memberPasswordMessage.textContent = 'Passwords do not match.';
+    return;
+  }
+
+  if (newPassword.length < 4) {
+    memberPasswordMessage.textContent = 'Password must be at least 4 characters.';
+    return;
+  }
+
+  const members = getStoredMembers();
+  const member = members.find(m => m.membershipNumber === currentUser.membershipNumber);
+  if (!member) {
+    memberPasswordMessage.textContent = 'Member record not found.';
+    return;
+  }
+
+  try {
+    const passwordHash = await hashPassword(newPassword);
+    member.passwordHash = passwordHash;
+
+    if (USE_BACKEND) {
+      await updateMemberInBackend(member);
+      await fetchMembersFromBackend();
+    } else {
+      saveMembers(members);
+    }
+
+    memberPasswordMessage.textContent = 'Password set successfully.';
+    memberPasswordMessage.style.color = '#0f766e';
+    memberPasswordSetup.style.display = 'none';
+    currentUser.needsPasswordSetup = false;
+  } catch (error) {
+    memberPasswordMessage.textContent = 'Failed to save password. Please try again.';
+    memberPasswordMessage.style.color = '#c33';
+  }
+});
 
 function attachMemberContributionClickHandlers() {
   const tithesEl = document.getElementById('memberViewTithes');
@@ -1454,6 +1529,12 @@ const projectMessage = document.getElementById('projectMessage');
 const projectMemberSearch = document.getElementById('projectMemberSearch');
 const projectMemberSearchResults = document.getElementById('projectMemberSearchResults');
 const projectMember = document.getElementById('projectMember');
+const projectNameInput = document.getElementById('projectName');
+const memberPasswordSetup = document.getElementById('memberPasswordSetup');
+const memberNewPassword = document.getElementById('memberNewPassword');
+const memberConfirmPassword = document.getElementById('memberConfirmPassword');
+const memberPasswordMessage = document.getElementById('memberPasswordMessage');
+const setMemberPasswordBtn = document.getElementById('setMemberPasswordBtn');
 
 function getStoredProjectGiving() {
   if (USE_BACKEND) {
@@ -1555,6 +1636,7 @@ function renderProjectGiving() {
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                   <span class="member-search-name">${record.memberName}</span>
                   <span class="contribution-item-date">${date}</span>
+                  ${record.projectName ? `<span class="contribution-item-project">Project: ${record.projectName}</span>` : ''}
                 </div>
                 <span class="contribution-item-amount">KES ${parseFloat(record.amount).toFixed(2)}</span>
               </div>
@@ -1611,10 +1693,11 @@ projectForm.addEventListener('submit', async (event) => {
   }
 
   const selectedMemberId = projectMember.value;
+  const projectName = projectNameInput.value.trim();
   const amount = document.getElementById('projectAmount').value.trim();
   const date = document.getElementById('projectDate').value;
 
-  if (!selectedMemberId || !amount || !date) {
+  if (!projectName || !selectedMemberId || !amount || !date) {
     projectMessage.textContent = 'Please fill in all fields.';
     setTimeout(() => { projectMessage.textContent = ''; }, 3000);
     return;
@@ -1632,6 +1715,7 @@ projectForm.addEventListener('submit', async (event) => {
   const newRecord = {
     membershipNumber: selectedMemberId,
     memberName: member.name,
+    projectName,
     amount,
     date,
   };
