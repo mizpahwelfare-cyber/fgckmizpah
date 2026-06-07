@@ -556,6 +556,129 @@ select:disabled {
   transform: rotate(360deg);
 }
 
+.membership-card-preview {
+  display: grid;
+  gap: 20px;
+  justify-content: center;
+  align-items: center;
+}
+
+.membership-card-side {
+  width: 8.5cm;
+  height: 5.5cm;
+  min-width: 8.5cm;
+  min-height: 5.5cm;
+  border-radius: 18px;
+  padding: 18px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  color: white;
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.18);
+}
+
+.membership-card-front {
+  background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+}
+
+.membership-card-back {
+  background: #111827;
+}
+
+.card-title {
+  font-size: 0.75rem;
+  letter-spacing: 0.16em;
+  font-weight: 700;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+
+.card-main {
+  font-size: 1.6rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  margin-top: 0.4rem;
+}
+
+.card-subtitle {
+  font-size: 1rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  margin-top: 0.8rem;
+  letter-spacing: 0.12em;
+}
+
+.card-detail-group {
+  text-align: left;
+  margin-top: 1rem;
+}
+
+.card-detail-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.85;
+}
+
+.card-detail-value {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-top: 0.2rem;
+  line-height: 1.3;
+}
+
+.card-meta {
+  font-size: 0.8rem;
+  opacity: 0.9;
+  text-transform: uppercase;
+  margin-top: 1rem;
+}
+
+.card-logo {
+  width: 60px;
+  height: auto;
+  margin: 0 auto 14px;
+  display: block;
+}
+
+.card-back-content {
+  margin: auto;
+  font-size: 1rem;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.4;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  justify-content: center;
+}
+
+.card-signature-image {
+  width: 140px;
+  height: auto;
+  margin: 0 auto;
+  display: block;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .print-card-only,
+  .print-card-only * {
+    visibility: visible;
+  }
+
+  .print-card-only {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}
+
 @media (max-width: 720px) {
   table,
   thead,

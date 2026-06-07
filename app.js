@@ -1222,22 +1222,69 @@ function generateMembershipCard(member) {
   const cardInfo = document.getElementById('cardInfo');
   
   cardInfo.innerHTML = `
-    <div style="margin: 20px 0;">
-      <h3 style="margin: 0 0 5px 0; font-size: 1.2rem;">${member.name}</h3>
-      <p style="margin: 0; font-size: 0.9rem; opacity: 0.9;">ID: ${member.membershipNumber}</p>
+    <div class="membership-card-side membership-card-front">
+      <img src="logo.jpg" class="card-logo" alt="Mizpah Logo" />
+      <div>
+        <div class="card-title">FULL GOSPEL CHURCHES OF KENYA</div>
+        <div class="card-main">MIZPAH</div>
+        <div class="card-subtitle">MEMBERSHIP CARD</div>
+      </div>
+      <div class="card-detail-group">
+        <div class="card-detail-label">Membership Number</div>
+        <div class="card-detail-value">${member.membershipNumber}</div>
+        <div class="card-detail-label" style="margin-top: 16px;">Member Name</div>
+        <div class="card-detail-value">${member.name}</div>
+      </div>
+      <div class="card-meta">${member.group} • ${member.dateJoined}</div>
     </div>
-    <div style="margin: 20px 0; font-size: 0.85rem; opacity: 0.9;">
-      <p style="margin: 5px 0;">Group: ${member.group}</p>
-      <p style="margin: 5px 0;">Joined: ${member.dateJoined}</p>
+    <div class="membership-card-side membership-card-back">
+      <div class="card-back-content">
+        <div>Resident Pastor: Robert N. Waweru</div>
+        <img src="signature-removebg-preview.png" class="card-signature-image" alt="Pastor Signature" />
+      </div>
     </div>
   `;
   
   modal.style.display = 'flex';
   
   document.getElementById('printCardBtn').onclick = () => {
-    window.print();
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Unable to open print window. Please allow popups.');
+      return;
+    }
+    const cardHtml = `
+      <html>
+        <head>
+          <title>Membership Card</title>
+          <style>
+            body { margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1rem; align-items: center; justify-content: center; min-height: 100vh; background: #f3f4f6; }
+            .membership-card-side { width: 8.5cm; height: 5.5cm; box-sizing: border-box; border-radius: 16px; padding: 16px; display: flex; flex-direction: column; justify-content: space-between; color: white; font-family: Inter, system-ui, sans-serif; }
+            .membership-card-front { background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%); }
+            .membership-card-back { background: #111827; }
+            .card-title { font-size: 0.75rem; letter-spacing: 0.16em; font-weight: 700; text-transform: uppercase; opacity: 0.9; }
+            .card-main { font-size: 1.6rem; font-weight: 900; letter-spacing: 0.08em; margin-top: 0.4rem; }
+            .card-subtitle { font-size: 1rem; font-weight: 800; text-transform: uppercase; margin-top: 0.8rem; letter-spacing: 0.12em; }
+            .card-detail-group { text-align: left; margin-top: 1rem; }
+            .card-detail-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.85; }
+            .card-detail-value { font-size: 1rem; font-weight: 700; margin-top: 0.2rem; line-height: 1.3; }
+            .card-meta { font-size: 0.8rem; opacity: 0.9; text-transform: uppercase; margin-top: 1rem; }
+            .card-back-content { margin: auto; font-size: 1rem; font-weight: 700; text-align: center; line-height: 1.4; }
+            @media print { body { margin: 0; } .membership-card-side { page-break-after: always; } }
+          </style>
+        </head>
+        <body>
+          ${cardInfo.innerHTML}
+        </body>
+      </html>
+    `;
+    printWindow.document.write(cardHtml);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
   };
 }
+
 
 // Modal Controls
 document.getElementById('closeEditModal').addEventListener('click', () => {
