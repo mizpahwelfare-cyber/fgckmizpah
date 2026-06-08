@@ -68,150 +68,183 @@ const backendCache = {
   attendance: [],
   welfare: [],
   churchGiving: [],
-  renderTitheTab();
+  departmentContributions: [],
+  expenses: [],
+};
 
-  // Toast helper with optional action (undo)
-  function showToast(message, {actionText, duration = 5000, onAction} = {}) {
-    const containerId = 'app-toast-container';
-    let container = document.getElementById(containerId);
-    if (!container) {
-      container = document.createElement('div');
-      container.id = containerId;
-      container.style.cssText = 'position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 4000; max-width: 360px;';
-      document.body.appendChild(container);
+async function createRecordInBackend(type, record) {
+  const response = await fetch(`${API_BASE}/api/records/${encodeURIComponent(type)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(record)
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to create ${type} record`);
+  }
+  return response.json();
+}
+
+async function deleteRecordInBackend(type, recordId) {
+  const response = await fetch(`${API_BASE}/api/records/${encodeURIComponent(type)}/${encodeURIComponent(recordId)}`, {
+    method: 'DELETE'
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to delete ${type} record`);
+  }
+  return response.json();
+}
+
+async function loadBackendData() {
+  const loaded = {};
+  await Promise.all(BACKEND_COLLECTIONS.map(async (type) => {
+    const response = await fetch(`${API_BASE}/api/records/${encodeURIComponent(type)}`);
+    if (!response.ok) {
+      throw new Error(`Failed to load ${type} records from backend`);
     }
+    const records = await response.json();
+    backendCache[type] = Array.isArray(records) ? records : [];
+    loaded[type] = backendCache[type];
+  }));
+  return loaded;
+}
 
-    const toast = document.createElement('div');
-    toast.style.cssText = 'background: #111827; color: white; padding: 12px 16px; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.2); display: flex; justify-content: space-between; align-items: center; gap: 12px; font-weight: 600;';
-    const text = document.createElement('div');
-    text.textContent = message;
-    toast.appendChild(text);
-
-    if (actionText && typeof onAction === 'function') {
-      const actionBtn = document.createElement('button');
-      actionBtn.textContent = actionText;
-      actionBtn.style.cssText = 'background: transparent; border: 1px solid rgba(255,255,255,0.15); color: white; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-weight: 700;';
-      actionBtn.onclick = () => {
-        onAction();
-        toast.remove();
-      };
-      toast.appendChild(actionBtn);
-    }
-
-    container.appendChild(toast);
-    const timer = setTimeout(() => toast.remove(), duration);
-    toast.addEventListener('mouseenter', () => clearTimeout(timer));
+function showToast(message, {actionText, duration = 5000, onAction} = {}) {
+  const containerId = 'app-toast-container';
+  let container = document.getElementById(containerId);
+  if (!container) {
+    container = document.createElement('div');
+    container.id = containerId;
+    container.style.cssText = 'position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 4000; max-width: 360px;';
+    document.body.appendChild(container);
   }
 
-  // Generic deletion with undo support for different types
-  async function deleteRecord(type, recordId) {
-    if (!hasPermission('canRecordTithe') && type === 'tithes') {
-      alert('You do not have permission to delete tithe records.');
+  const toast = document.createElement('div');
+  toast.style.cssText = 'background: #111827; color: white; padding: 12px 16px; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.2); display: flex; justify-content: space-between; align-items: center; gap: 12px; font-weight: 600;';
+  const text = document.createElement('div');
+  text.textContent = message;
+  toast.appendChild(text);
+
+  if (actionText && typeof onAction === 'function') {
+    const actionBtn = document.createElement('button');
+    actionBtn.textContent = actionText;
+    actionBtn.style.cssText = 'background: transparent; border: 1px solid rgba(255,255,255,0.15); color: white; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-weight: 700;';
+    actionBtn.onclick = () => {
+      onAction();
+      toast.remove();
+    };
+    toast.appendChild(actionBtn);
+  }
+
+  container.appendChild(toast);
+  const timer = setTimeout(() => toast.remove(), duration);
+  toast.addEventListener('mouseenter', () => clearTimeout(timer));
+}
+
+async function deleteRecord(type, recordId) {
+  if (!hasPermission('canRecordTithe') && type === 'tithes') {
+    alert('You do not have permission to delete tithe records.');
+    return;
+  }
+  if (type === 'projectGiving' && !hasPermission('canRecordProjectGiving')) {
+    alert('You do not have permission to delete project giving records.');
+    return;
+  }
+  if (type === 'welfare' && !hasPermission('canRecordWelfare')) {
+    alert('You do not have permission to delete welfare records.');
+    return;
+  }
+
+  let deleted = null;
+  if (USE_BACKEND) {
+    const collection = backendCache[type] || [];
+    const idx = collection.findIndex(r => String(getRecordId(r) || r.id) === String(recordId));
+    if (idx !== -1) deleted = collection[idx];
+  } else {
+    const collection = (type === 'tithes') ? getStoredTithes()
+      : (type === 'projectGiving') ? getStoredProjectGiving()
+      : (type === 'welfare') ? getStoredWelfare() : [];
+    const idx = collection.findIndex(r => String(getRecordId(r) || r.id) === String(recordId));
+    if (idx !== -1) deleted = collection[idx];
+  }
+
+  if (USE_BACKEND) {
+    try {
+      await deleteRecordInBackend(type, recordId);
+      await loadBackendData();
+    } catch (err) {
+      alert(err.message || `Failed to delete ${type} record.`);
       return;
     }
-    // allow same permission for project/welfare for now (use canRecordProjectGiving / canRecordWelfare)
-    if (type === 'projectGiving' && !hasPermission('canRecordProjectGiving')) {
-      alert('You do not have permission to delete project giving records.');
-      return;
-    }
-    if (type === 'welfare' && !hasPermission('canRecordWelfare')) {
-      alert('You do not have permission to delete welfare records.');
-      return;
-    }
-
-    // find the record in local cache before deletion
-    let deleted = null;
-    if (USE_BACKEND) {
-      // best-effort: fetch from backend cache
-      const collection = backendCache[type] || [];
-      const idx = collection.findIndex(r => String(getRecordId(r) || r.id) === String(recordId));
-      if (idx !== -1) deleted = collection[idx];
-    } else {
-      const collection = (type === 'tithes') ? getStoredTithes()
-        : (type === 'projectGiving') ? getStoredProjectGiving()
-        : (type === 'welfare') ? getStoredWelfare() : [];
-      const idx = collection.findIndex(r => String(getRecordId(r) || r.id) === String(recordId));
-      if (idx !== -1) deleted = collection[idx];
-    }
-
-    // perform deletion
-    if (USE_BACKEND) {
-      try {
-        await deleteRecordInBackend(type, recordId);
-        await loadBackendData();
-      } catch (err) {
-        alert(err.message || `Failed to delete ${type} record.`);
-        return;
-      }
-    } else {
-      if (type === 'tithes') {
-        const tithes = getStoredTithes();
-        const filtered = tithes.filter(t => String(getRecordId(t) || t.id) !== String(recordId));
-        saveTithes(filtered);
-      } else if (type === 'projectGiving') {
-        const records = getStoredProjectGiving();
-        const filtered = records.filter(r => String(getRecordId(r) || r.id) !== String(recordId));
-        saveProjectGiving(filtered);
-      } else if (type === 'welfare') {
-        const records = getStoredWelfare();
-        const filtered = records.filter(r => String(getRecordId(r) || r.id) !== String(recordId));
-        saveWelfare(filtered);
-      }
-    }
-
-    // re-render affected sections
+  } else {
     if (type === 'tithes') {
-      renderTitheTab();
-      updateDashboard();
+      const tithes = getStoredTithes();
+      const filtered = tithes.filter(t => String(getRecordId(t) || t.id) !== String(recordId));
+      saveTithes(filtered);
     } else if (type === 'projectGiving') {
-      renderProjectGiving();
-      updateDashboard();
+      const records = getStoredProjectGiving();
+      const filtered = records.filter(r => String(getRecordId(r) || r.id) !== String(recordId));
+      saveProjectGiving(filtered);
     } else if (type === 'welfare') {
-      renderWelfare();
-    }
-
-    if (currentSelectedMember) showMemberDetails(currentSelectedMember);
-
-    // show undo toast
-    if (deleted) {
-      showToast('Record deleted', {
-        actionText: 'Undo',
-        duration: 7000,
-        onAction: async () => {
-          // restore record
-          if (USE_BACKEND) {
-            try {
-              await createRecordInBackend(type, deleted);
-              await loadBackendData();
-            } catch (err) {
-              alert('Failed to restore record: ' + (err.message || 'Unknown'));
-              return;
-            }
-          } else {
-            if (type === 'tithes') {
-              const t = getStoredTithes();
-              t.push(deleted);
-              saveTithes(t);
-              renderTitheTab();
-              updateDashboard();
-            } else if (type === 'projectGiving') {
-              const r = getStoredProjectGiving();
-              r.push(deleted);
-              saveProjectGiving(r);
-              renderProjectGiving();
-              updateDashboard();
-            } else if (type === 'welfare') {
-              const w = getStoredWelfare();
-              w.push(deleted);
-              saveWelfare(w);
-              renderWelfare();
-            }
-          }
-          if (currentSelectedMember) showMemberDetails(currentSelectedMember);
-        }
-      });
+      const records = getStoredWelfare();
+      const filtered = records.filter(r => String(getRecordId(r) || r.id) !== String(recordId));
+      saveWelfare(filtered);
     }
   }
+
+  if (type === 'tithes') {
+    renderTitheTab();
+    updateDashboard();
+  } else if (type === 'projectGiving') {
+    renderProjectGiving();
+    updateDashboard();
+  } else if (type === 'welfare') {
+    renderWelfare();
+  }
+
+  if (currentSelectedMember) showMemberDetails(currentSelectedMember);
+
+  if (deleted) {
+    showToast('Record deleted', {
+      actionText: 'Undo',
+      duration: 7000,
+      onAction: async () => {
+        if (USE_BACKEND) {
+          try {
+            await createRecordInBackend(type, deleted);
+            await loadBackendData();
+          } catch (err) {
+            alert('Failed to restore record: ' + (err.message || 'Unknown'));
+            return;
+          }
+        } else {
+          if (type === 'tithes') {
+            const t = getStoredTithes();
+            t.push(deleted);
+            saveTithes(t);
+            renderTitheTab();
+            updateDashboard();
+          } else if (type === 'projectGiving') {
+            const r = getStoredProjectGiving();
+            r.push(deleted);
+            saveProjectGiving(r);
+            renderProjectGiving();
+            updateDashboard();
+          } else if (type === 'welfare') {
+            const w = getStoredWelfare();
+            w.push(deleted);
+            saveWelfare(w);
+            renderWelfare();
+          }
+        }
+        if (currentSelectedMember) showMemberDetails(currentSelectedMember);
+      }
+    });
+  }
+}
+
+async function hashPassword(password) {
   const encoder = new TextEncoder();
   const data = encoder.encode(password);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
@@ -2954,11 +2987,6 @@ contributionListContainer.addEventListener('contextmenu', (e) => {
     document.addEventListener('click', () => menu.remove(), { once: true });
   }, 0);
 });
-
-  setTimeout(() => {
-    document.addEventListener('click', () => menu.remove(), { once: true });
-  }, 0);
-}
 
 async function deleteTithe(recordId) {
   if (!hasPermission('canRecordTithe')) {
