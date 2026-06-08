@@ -68,76 +68,150 @@ const backendCache = {
   attendance: [],
   welfare: [],
   churchGiving: [],
-  departmentContributions: [],
-  expenses: []
-};
+  renderTitheTab();
 
-async function loadBackendData() {
-  if (!USE_BACKEND) return backendCache;
+  // Toast helper with optional action (undo)
+  function showToast(message, {actionText, duration = 5000, onAction} = {}) {
+    const containerId = 'app-toast-container';
+    let container = document.getElementById(containerId);
+    if (!container) {
+      container = document.createElement('div');
+      container.id = containerId;
+      container.style.cssText = 'position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 4000; max-width: 360px;';
+      document.body.appendChild(container);
+    }
 
-  try {
-    const response = await fetch(`${API_BASE}/api/backup`);
-    if (!response.ok) throw new Error('Failed to load backend records');
-    const data = await response.json();
-    backendCache.members = Array.isArray(data.members) ? data.members : [];
-    BACKEND_COLLECTIONS.forEach((type) => {
-      backendCache[type] = Array.isArray(data[type]) ? data[type] : [];
-    });
-    return backendCache;
-  } catch (error) {
-    console.error('Backend cache load failed:', error);
-    return backendCache;
+    const toast = document.createElement('div');
+    toast.style.cssText = 'background: #111827; color: white; padding: 12px 16px; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.2); display: flex; justify-content: space-between; align-items: center; gap: 12px; font-weight: 600;';
+    const text = document.createElement('div');
+    text.textContent = message;
+    toast.appendChild(text);
+
+    if (actionText && typeof onAction === 'function') {
+      const actionBtn = document.createElement('button');
+      actionBtn.textContent = actionText;
+      actionBtn.style.cssText = 'background: transparent; border: 1px solid rgba(255,255,255,0.15); color: white; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-weight: 700;';
+      actionBtn.onclick = () => {
+        onAction();
+        toast.remove();
+      };
+      toast.appendChild(actionBtn);
+    }
+
+    container.appendChild(toast);
+    const timer = setTimeout(() => toast.remove(), duration);
+    toast.addEventListener('mouseenter', () => clearTimeout(timer));
   }
-}
 
-async function createRecordInBackend(type, record) {
-  const response = await fetch(`${API_BASE}/api/records/${encodeURIComponent(type)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(record)
-  });
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || `Failed to save ${type} record to backend`);
+  // Generic deletion with undo support for different types
+  async function deleteRecord(type, recordId) {
+    if (!hasPermission('canRecordTithe') && type === 'tithes') {
+      alert('You do not have permission to delete tithe records.');
+      return;
+    }
+    // allow same permission for project/welfare for now (use canRecordProjectGiving / canRecordWelfare)
+    if (type === 'projectGiving' && !hasPermission('canRecordProjectGiving')) {
+      alert('You do not have permission to delete project giving records.');
+      return;
+    }
+    if (type === 'welfare' && !hasPermission('canRecordWelfare')) {
+      alert('You do not have permission to delete welfare records.');
+      return;
+    }
+
+    // find the record in local cache before deletion
+    let deleted = null;
+    if (USE_BACKEND) {
+      // best-effort: fetch from backend cache
+      const collection = backendCache[type] || [];
+      const idx = collection.findIndex(r => String(getRecordId(r) || r.id) === String(recordId));
+      if (idx !== -1) deleted = collection[idx];
+    } else {
+      const collection = (type === 'tithes') ? getStoredTithes()
+        : (type === 'projectGiving') ? getStoredProjectGiving()
+        : (type === 'welfare') ? getStoredWelfare() : [];
+      const idx = collection.findIndex(r => String(getRecordId(r) || r.id) === String(recordId));
+      if (idx !== -1) deleted = collection[idx];
+    }
+
+    // perform deletion
+    if (USE_BACKEND) {
+      try {
+        await deleteRecordInBackend(type, recordId);
+        await loadBackendData();
+      } catch (err) {
+        alert(err.message || `Failed to delete ${type} record.`);
+        return;
+      }
+    } else {
+      if (type === 'tithes') {
+        const tithes = getStoredTithes();
+        const filtered = tithes.filter(t => String(getRecordId(t) || t.id) !== String(recordId));
+        saveTithes(filtered);
+      } else if (type === 'projectGiving') {
+        const records = getStoredProjectGiving();
+        const filtered = records.filter(r => String(getRecordId(r) || r.id) !== String(recordId));
+        saveProjectGiving(filtered);
+      } else if (type === 'welfare') {
+        const records = getStoredWelfare();
+        const filtered = records.filter(r => String(getRecordId(r) || r.id) !== String(recordId));
+        saveWelfare(filtered);
+      }
+    }
+
+    // re-render affected sections
+    if (type === 'tithes') {
+      renderTitheTab();
+      updateDashboard();
+    } else if (type === 'projectGiving') {
+      renderProjectGiving();
+      updateDashboard();
+    } else if (type === 'welfare') {
+      renderWelfare();
+    }
+
+    if (currentSelectedMember) showMemberDetails(currentSelectedMember);
+
+    // show undo toast
+    if (deleted) {
+      showToast('Record deleted', {
+        actionText: 'Undo',
+        duration: 7000,
+        onAction: async () => {
+          // restore record
+          if (USE_BACKEND) {
+            try {
+              await createRecordInBackend(type, deleted);
+              await loadBackendData();
+            } catch (err) {
+              alert('Failed to restore record: ' + (err.message || 'Unknown'));
+              return;
+            }
+          } else {
+            if (type === 'tithes') {
+              const t = getStoredTithes();
+              t.push(deleted);
+              saveTithes(t);
+              renderTitheTab();
+              updateDashboard();
+            } else if (type === 'projectGiving') {
+              const r = getStoredProjectGiving();
+              r.push(deleted);
+              saveProjectGiving(r);
+              renderProjectGiving();
+              updateDashboard();
+            } else if (type === 'welfare') {
+              const w = getStoredWelfare();
+              w.push(deleted);
+              saveWelfare(w);
+              renderWelfare();
+            }
+          }
+          if (currentSelectedMember) showMemberDetails(currentSelectedMember);
+        }
+      });
+    }
   }
-  const created = await response.json();
-  await loadBackendData();
-  return created;
-}
-
-async function updateRecordInBackend(type, id, record) {
-  const response = await fetch(`${API_BASE}/api/records/${encodeURIComponent(type)}/${encodeURIComponent(id)}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(record)
-  });
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || `Failed to update ${type} record on backend`);
-  }
-  const updated = await response.json();
-  await loadBackendData();
-  return updated;
-}
-
-async function deleteRecordInBackend(type, id) {
-  const response = await fetch(`${API_BASE}/api/records/${encodeURIComponent(type)}/${encodeURIComponent(id)}`, {
-    method: 'DELETE'
-  });
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || `Failed to delete ${type} record from backend`);
-  }
-  await loadBackendData();
-  return response.json();
-}
-
-const STAFF_CREDENTIALS = {
-  pastor: '72a8403b0b45e2c73f4a19942f191def3d728e2345fdf1e291de2412e2736813',
-  elder: '01ce0fac71149c483337c57746f56eef28d1b7c390e7b170bc018c45d5a80513'
-};
-
-async function hashPassword(password) {
   const encoder = new TextEncoder();
   const data = encoder.encode(password);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
@@ -973,14 +1047,15 @@ function renderMemberContributions(membershipNumber) {
       const dateStr = date.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: '2-digit' });
       const typeLabel = contribution.type === 'tithe' ? 'Tithe' : 'Project Giving';
       const typeClass = contribution.type === 'tithe' ? 'tithe' : 'project';
-      
+      const cid = getRecordId(contribution) || contribution.id || (`local_${Date.now()}_${Math.floor(Math.random()*10000)}`);
+
       html += `
-        <div class="contribution-item">
+        <div class="contribution-item" data-id="${cid}">
           <div style="display: flex; gap: 8px; align-items: center;">
             <span class="contribution-type ${typeClass}">${typeLabel}</span>
             <span class="contribution-item-date">${dateStr}</span>
           </div>
-          <span class="contribution-item-amount">KES ${parseFloat(contribution.amount).toFixed(2)}</span>
+          <span class="contribution-item-amount" title="Right-click to manage">KES ${parseFloat(contribution.amount).toFixed(2)}</span>
         </div>
       `;
     });
@@ -1035,13 +1110,15 @@ function renderMemberContributionBreakdown(membershipNumber, type) {
       const date = new Date(contribution.date);
       const dateStr = date.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: '2-digit' });
 
+      const cid = getRecordId(contribution) || contribution.id || (`local_${Date.now()}_${Math.floor(Math.random()*10000)}`);
+
       html += `
-        <div class="contribution-item">
+        <div class="contribution-item" data-id="${cid}">
           <div style="display: flex; gap: 8px; align-items: center;">
             <span class="contribution-type ${type === 'tithe' ? 'tithe' : 'project'}">${typeLabel}</span>
             <span class="contribution-item-date">${dateStr}</span>
           </div>
-          <span class="contribution-item-amount">KES ${parseFloat(contribution.amount).toFixed(2)}</span>
+          <span class="contribution-item-amount" title="Right-click to manage">KES ${parseFloat(contribution.amount).toFixed(2)}</span>
         </div>
       `;
     });
@@ -1174,6 +1251,10 @@ function saveTithes(tithes) {
   if (!USE_BACKEND) {
     localStorage.setItem(TITHE_STORAGE_KEY, JSON.stringify(tithes));
   }
+}
+
+function getRecordId(rec) {
+  return rec && (rec.id || rec._id || rec._key || rec._uuid || rec.recordId) ? (rec.id || rec._id || rec._key || rec._uuid || rec.recordId) : null;
 }
 
 // Context Menu for Deletion
@@ -1613,6 +1694,19 @@ function renderProjectGiving() {
   const projectGroupList = document.getElementById('projectGroupList');
   projectGroupList.innerHTML = '';
 
+  // Ensure local project records have ids for management
+  if (!USE_BACKEND) {
+    let mutated = false;
+    const normalized = records.map((r) => {
+      if (!r.id && !r._id && !getRecordId(r)) {
+        r.id = `local_${Date.now()}_${Math.floor(Math.random()*10000)}`;
+        mutated = true;
+      }
+      return r;
+    });
+    if (mutated) saveProjectGiving(normalized);
+  }
+
   const groupRecords = {};
   GROUPS.forEach((group) => {
     groupRecords[group] = [];
@@ -1647,14 +1741,14 @@ function renderProjectGiving() {
           ${recordsForGroup.length === 0 ? '<p style="color: var(--muted); font-size: 0.95rem; margin: 0;">No contributions recorded for this group.</p>' : recordsForGroup.map(record => {
             const date = new Date(record.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: '2-digit' });
             return `
-              <div class="contribution-item">
-                <div style="display: flex; flex-direction: column; gap: 4px;">
-                  <span class="member-search-name">${record.memberName}</span>
-                  <span class="contribution-item-date">${date}</span>
-                  ${record.projectName ? `<span class="contribution-item-project">Project: ${record.projectName}</span>` : ''}
-                </div>
-                <span class="contribution-item-amount">KES ${parseFloat(record.amount).toFixed(2)}</span>
-              </div>
+                  <div class="contribution-item" data-id="${record.id || getRecordId(record) || `local_${Date.now()}_${Math.floor(Math.random()*10000)}`}" >
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                      <span class="member-search-name">${record.memberName}</span>
+                      <span class="contribution-item-date">${date}</span>
+                      ${record.projectName ? `<span class="contribution-item-project">Project: ${record.projectName}</span>` : ''}
+                    </div>
+                    <span class="contribution-item-amount" title="Right-click to manage">KES ${parseFloat(record.amount).toFixed(2)}</span>
+                  </div>
             `;
           }).join('')}
         </div>
@@ -1750,6 +1844,8 @@ projectForm.addEventListener('submit', async (event) => {
     }
   } else {
     const records = getStoredProjectGiving();
+    // assign local id
+    newRecord.id = `local_${Date.now()}_${Math.floor(Math.random()*10000)}`;
     records.push(newRecord);
     saveProjectGiving(records);
     renderProjectGiving();
@@ -1842,6 +1938,19 @@ function renderWelfare() {
     return;
   }
 
+  // Ensure local welfare records have ids for management
+  if (!USE_BACKEND) {
+    let mutated = false;
+    const normalized = records.map((r) => {
+      if (!r.id && !r._id && !getRecordId(r)) {
+        r.id = `local_${Date.now()}_${Math.floor(Math.random()*10000)}`;
+        mutated = true;
+      }
+      return r;
+    });
+    if (mutated) saveWelfare(normalized);
+  }
+
   // Group records by beneficiary
   const groupedByBeneficiary = {};
   records.forEach((record) => {
@@ -1879,12 +1988,12 @@ function renderWelfare() {
         ${sortedRecords.map((record) => {
           const date = new Date(record.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: '2-digit' });
           return `
-            <div class="contribution-item">
+            <div class="contribution-item" data-id="${record.id || getRecordId(record) || `local_${Date.now()}_${Math.floor(Math.random()*10000)}`}">
               <div style="display: flex; flex-direction: column; gap: 4px;">
                 <span class="member-search-name">From: ${record.contributorName}</span>
                 <span class="contribution-item-date">${date}</span>
               </div>
-              <span class="contribution-item-amount">KES ${parseFloat(record.amount).toFixed(2)}</span>
+              <span class="contribution-item-amount" title="Right-click to manage">KES ${parseFloat(record.amount).toFixed(2)}</span>
             </div>
           `;
         }).join('')}
@@ -1973,6 +2082,7 @@ welfareForm.addEventListener('submit', async (event) => {
     }
   } else {
     const records = getStoredWelfare();
+    newRecord.id = `local_${Date.now()}_${Math.floor(Math.random()*10000)}`;
     records.push(newRecord);
     saveWelfare(records);
     renderWelfare();
@@ -2634,6 +2744,19 @@ function renderTitheTab() {
   const monthGroupsContainer = document.getElementById('titheMonthGroups');
   monthGroupsContainer.innerHTML = '';
 
+  // Ensure local tithe records have ids for management
+  if (!USE_BACKEND) {
+    let mutated = false;
+    const normalized = tithes.map((t) => {
+      if (!t.id && !t._id && !t.id) {
+        t.id = `local_${Date.now()}_${Math.floor(Math.random()*10000)}`;
+        mutated = true;
+      }
+      return t;
+    });
+    if (mutated) saveTithes(normalized);
+  }
+
   if (tithes.length === 0) {
     monthGroupsContainer.innerHTML = '<p style="color: var(--muted); font-size: 0.95rem;">No tithe records yet.</p>';
     return;
@@ -2662,13 +2785,14 @@ function renderTitheTab() {
           const member = members.find(m => m.membershipNumber === tithe.membershipNumber);
           const memberName = member ? member.name : 'Unknown Member';
           const date = new Date(tithe.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: '2-digit' });
+          const tid = getRecordId(tithe) || (`local_${Date.now()}_${Math.floor(Math.random()*10000)}`);
           return `
-            <div class="contribution-item">
+            <div class="contribution-item" data-id="${tid}">
               <div style="display: flex; flex-direction: column; gap: 4px;">
                 <span class="member-search-name">${memberName}</span>
                 <span class="contribution-item-date">${date}</span>
               </div>
-              <span class="contribution-item-amount">KES ${parseFloat(tithe.amount).toFixed(2)}</span>
+              <span class="contribution-item-amount" title="Right-click to manage">KES ${parseFloat(tithe.amount).toFixed(2)}</span>
             </div>
           `;
         }).join('')}
@@ -2746,6 +2870,8 @@ titheTabForm.addEventListener('submit', async (event) => {
     }
   } else {
     const tithes = getStoredTithes();
+    // assign a local id for easier deletion/management
+    newTithe.id = `local_${Date.now()}_${Math.floor(Math.random()*10000)}`;
     tithes.push(newTithe);
     saveTithes(tithes);
     renderTitheTab();
@@ -2770,6 +2896,88 @@ document.getElementById('closeTitheForm').addEventListener('click', (e) => {
 
 populateTitheMemberSelect();
 renderTitheTab();
+
+// Context menu for contribution items (tithe, project giving, welfare)
+const contributionListContainer = document.body;
+contributionListContainer.addEventListener('contextmenu', (e) => {
+  const item = e.target.closest('.contribution-item');
+  if (!item) return;
+  const recordId = item.dataset.id;
+  if (!recordId) return;
+
+  // determine which collection contains this id
+  const t = getStoredTithes().some(r => String(getRecordId(r) || r.id) === String(recordId));
+  const p = getStoredProjectGiving().some(r => String(getRecordId(r) || r.id) === String(recordId));
+  const w = getStoredWelfare().some(r => String(getRecordId(r) || r.id) === String(recordId));
+
+  let type = null;
+  if (t) type = 'tithes';
+  else if (p) type = 'projectGiving';
+  else if (w) type = 'welfare';
+
+  if (!type) return;
+
+  e.preventDefault();
+  // remove any existing menu
+  document.querySelectorAll('.inline-context-menu').forEach(m => m.remove());
+
+  const menu = document.createElement('div');
+  menu.className = 'inline-context-menu';
+  menu.style.cssText = 'position: fixed; top: ' + e.clientY + 'px; left: ' + e.clientX + 'px; background: white; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.15); z-index: 2000;';
+
+  const deleteOption = document.createElement('button');
+  deleteOption.textContent = 'Delete Record';
+  deleteOption.style.cssText = 'display: block; width: 100%; padding: 10px 14px; border: none; background: none; cursor: pointer; text-align: left; color: #ef4444; font-weight: 600;';
+  deleteOption.onmouseover = () => deleteOption.style.background = '#fff1f2';
+  deleteOption.onmouseout = () => deleteOption.style.background = 'none';
+  deleteOption.onclick = async () => {
+    menu.remove();
+    if (!confirm('Are you sure you want to delete this record?')) return;
+    await deleteRecord(type, recordId);
+  };
+
+  menu.appendChild(deleteOption);
+  document.body.appendChild(menu);
+
+  setTimeout(() => {
+    document.addEventListener('click', () => menu.remove(), { once: true });
+  }, 0);
+});
+
+  setTimeout(() => {
+    document.addEventListener('click', () => menu.remove(), { once: true });
+  }, 0);
+}
+
+async function deleteTithe(recordId) {
+  if (!hasPermission('canRecordTithe')) {
+    alert('You do not have permission to delete tithe records.');
+    return;
+  }
+
+  if (USE_BACKEND) {
+    try {
+      await deleteRecordInBackend('tithes', recordId);
+      await loadBackendData();
+    } catch (err) {
+      alert(err.message || 'Failed to delete tithe record.');
+      return;
+    }
+  } else {
+    const tithes = getStoredTithes();
+    const filtered = tithes.filter(t => {
+      const id = getRecordId(t) || t.id;
+      return String(id) !== String(recordId);
+    });
+    saveTithes(filtered);
+  }
+
+  renderTitheTab();
+  updateDashboard();
+  if (currentSelectedMember) {
+    showMemberDetails(currentSelectedMember);
+  }
+}
 
 // Department Contribution Management
 const DEPARTMENTS = ['men', 'ladies', 'youth', 'teens', 'sundayschool', 'intercessory', 'mission', 'praiseandworship', 'ushering'];
