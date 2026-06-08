@@ -431,12 +431,23 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
   messageEl.style.color = '#3c3';
 
   setTimeout(() => {
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('appContainer').style.display = 'block';
-    messageEl.style.display = 'none';
-    document.getElementById('loginForm').reset();
-    document.getElementById('loginUserType').value = '';
-    updateUIForRole();
+    (async () => {
+      try {
+        if (USE_BACKEND && typeof loadBackendData === 'function') {
+          await loadBackendData();
+          await fetchMembersFromBackend().catch(() => {});
+        }
+      } catch (err) {
+        console.warn('Failed to sync backend on login:', err);
+      } finally {
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('appContainer').style.display = 'block';
+        messageEl.style.display = 'none';
+        document.getElementById('loginForm').reset();
+        document.getElementById('loginUserType').value = '';
+        updateUIForRole();
+      }
+    })();
   }, 1000);
 });
 
