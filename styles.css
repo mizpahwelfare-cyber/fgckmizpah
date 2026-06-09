@@ -293,18 +293,35 @@ select:disabled {
   cursor: pointer;
   font-size: 0.95rem;
   color: var(--muted);
+  border-radius: 10px;
   border-bottom: 3px solid transparent;
   transition: all 0.2s;
   font-weight: 500;
 }
 
 .tab-btn:hover {
-  color: var(--text);
+  opacity: 0.92;
 }
 
 .tab-btn.active {
-  color: var(--primary);
-  border-bottom-color: var(--primary);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
+}
+
+.tab-btn.tab-addmember { background: #7c3aed; color: white; }
+.tab-btn.tab-members { background: #2563eb; color: white; }
+.tab-btn.tab-giving-records { background: #059669; color: white; }
+.tab-btn.tab-tithe { background: #f59e0b; color: white; }
+.tab-btn.tab-expenses { background: #ef4444; color: white; }
+.tab-btn.tab-project-giving { background: #0ea5e9; color: white; }
+.tab-btn.tab-welfare { background: #10b981; color: white; }
+.tab-btn.tab-department-savings { background: #8b5cf6; color: white; }
+.tab-btn.tab-inventory { background: #0284c7; color: white; }
+.tab-btn.tab-export { background: #f97316; color: white; }
+.tab-btn.tab-logout { background: #4b5563; color: white; }
+
+.tab-content {
+  display: none;
 }
 
 .tab-content {

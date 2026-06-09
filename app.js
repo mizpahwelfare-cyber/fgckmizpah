@@ -5,6 +5,11 @@ const API_BASE = window.API_BASE ?? '';
 // Force using backend API for all persistence. Set window.DISABLE_BACKEND = true to opt-out.
 const USE_BACKEND = (typeof window.DISABLE_BACKEND !== 'boolean') ? true : !window.DISABLE_BACKEND;
 
+const STAFF_CREDENTIALS = {
+  pastor: '72a8403b0b45e2c73f4a19942f191def3d728e2345fdf1e291de2412e2736813', // Mizpah@321
+  elder: '9ea103b8004d1bd23eb1a3cbbc652e48ba71bd8dcea8d78115fc2992593a59d5'  // elder123
+};
+
 async function fetchMembersFromBackend() {
   try {
     const response = await fetch(`${API_BASE}/api/members`);
@@ -445,7 +450,24 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
       return;
     }
 
-    const passwordHash = await hashPassword(password);
+    if (!STAFF_CREDENTIALS[userType]) {
+      messageEl.textContent = 'No staff credentials are configured for this role.';
+      messageEl.style.background = '#fee';
+      messageEl.style.color = '#c33';
+      return;
+    }
+
+    let passwordHash;
+    try {
+      passwordHash = await hashPassword(password);
+    } catch (hashError) {
+      console.error('Password hashing failed:', hashError);
+      messageEl.textContent = 'Unable to validate password in this browser. Please use a modern browser.';
+      messageEl.style.background = '#fee';
+      messageEl.style.color = '#c33';
+      return;
+    }
+
     if (passwordHash !== STAFF_CREDENTIALS[userType]) {
       messageEl.textContent = 'Invalid password.';
       messageEl.style.background = '#fee';
@@ -640,10 +662,10 @@ function handleMemberProjectClick() {
 
 function getAllowedTabsForRole(role) {
   if (role === 'pastor') {
-    return ['members', 'giving', 'tithe', 'project', 'inventory', 'welfare', 'attendance', 'expenses', 'department', 'addmember', 'backup', 'logout'];
+    return ['addmember', 'members', 'giving-records', 'tithe', 'expenses', 'project-giving', 'welfare', 'department-savings', 'inventory', 'attendance', 'export', 'logout'];
   }
   if (role === 'elder') {
-    return ['members', 'giving', 'project', 'inventory', 'welfare', 'attendance', 'expenses', 'department', 'logout'];
+    return ['members', 'giving-records', 'tithe', 'expenses', 'project-giving', 'inventory', 'welfare', 'department-savings', 'export', 'logout'];
   }
   if (role === 'member') {
     return ['logout'];
@@ -653,7 +675,7 @@ function getAllowedTabsForRole(role) {
 
 function updateTabVisibility() {
   const tabs = document.querySelectorAll('.tab-btn');
-  const allowedTabs = getAllowedTabsForRole(currentUser.role);
+  const allowedTabs = getAllowedTabsForRole(currentUser?.role);
 
   tabs.forEach(tab => {
     const tabName = tab.dataset.tab;
@@ -833,24 +855,51 @@ setupRefreshButton();
 document.addEventListener('DOMContentLoaded', setupRefreshButton);
 
 // ============ TAB SWITCHING (Updated) ============
-const tabButtons = document.querySelectorAll('.tab-btn');
-const tabContents = document.querySelectorAll('.tab-content');
+function setupTabNavigation() {
+  let buttons = [];
+  let contents = [];
 
-function showTab(tabName) {
-  const allowedTabs = getAllowedTabsForRole(currentUser?.role);
-  if (!allowedTabs.includes(tabName)) {
-    return;
+  function init() {
+    buttons = Array.from(document.querySelectorAll('.tab-btn'));
+    contents = Array.from(document.querySelectorAll('.tab-content'));
+
+    buttons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        showTab(btn.dataset.tab);
+      });
+    });
   }
 
-  tabButtons.forEach((b) => b.classList.toggle('active', b.dataset.tab === tabName));
-  tabContents.forEach((c) => c.classList.toggle('active', c.id === tabName));
+  function showTab(tabName) {
+    const allowedTabs = getAllowedTabsForRole(currentUser?.role);
+    if (!allowedTabs.includes(tabName)) {
+      return;
+    }
+
+    buttons.forEach((b) => b.classList.toggle('active', b.dataset.tab === tabName));
+    contents.forEach((c) => c.classList.toggle('active', c.id === tabName));
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  return {
+    showTab,
+    buttons,
+    contents,
+  };
 }
 
-tabButtons.forEach((btn) => {
-  btn.addEventListener('click', () => {
-    showTab(btn.dataset.tab);
-  });
-});
+const tabNavigation = setupTabNavigation();
+
+function showTab(tabName) {
+  if (tabNavigation && typeof tabNavigation.showTab === 'function') {
+    tabNavigation.showTab(tabName);
+  }
+}
 
 const logoutTabBtn = document.getElementById('logoutTabBtn');
 if (logoutTabBtn) {

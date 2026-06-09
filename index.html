@@ -43,7 +43,9 @@
         </div>
 
         <div id="loginMessage" style="padding: 12px; border-radius: 6px; text-align: center; display: none; font-weight: 600;"></div>
-
+        <div style="font-size: 0.85rem; color: #475569; line-height: 1.4;">
+          Default staff passwords: <strong>Mizpah@321</strong> for Pastor, <strong>elder123</strong> for Elder. For Members, use the last 3 digits of your membership number on first login.
+        </div>
         <button type="submit" style="padding: 12px; background: #667eea; color: white; border: none; border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background 0.3s;">Login</button>
       </form>
     </div>
@@ -132,18 +134,17 @@
 
       <section class="content">
         <nav class="tabs">
-          <button class="tab-btn active" data-tab="members">Members</button>
-          <button class="tab-btn" data-tab="giving">Church Giving</button>
-          <button class="tab-btn" data-tab="tithe">Tithe</button>
-          <button class="tab-btn" data-tab="project">Project Giving</button>
-          <button class="tab-btn" data-tab="inventory">Inventory</button>
-          <button class="tab-btn" data-tab="welfare">Welfare</button>
-          <button class="tab-btn" data-tab="attendance">Attendance</button>
-          <button class="tab-btn" data-tab="expenses">Expenses</button>
-          <button class="tab-btn" data-tab="department">Department Contribution</button>
-          <button class="tab-btn" data-tab="addmember">Add Member</button>
-          <button class="tab-btn" data-tab="backup">Data Backup</button>
-          <button class="tab-btn" data-tab="logout">Logout</button>
+          <button class="tab-btn tab-addmember" data-tab="addmember">Add Member</button>
+          <button class="tab-btn tab-members active" data-tab="members">Members</button>
+          <button class="tab-btn tab-giving-records" data-tab="giving-records">Giving Records</button>
+          <button class="tab-btn tab-tithe" data-tab="tithe">Tithe</button>
+          <button class="tab-btn tab-expenses" data-tab="expenses">Expenses</button>
+          <button class="tab-btn tab-project-giving" data-tab="project-giving">Project Giving</button>
+          <button class="tab-btn tab-welfare" data-tab="welfare">Welfare</button>
+          <button class="tab-btn tab-department-savings" data-tab="department-savings">Department Savings</button>
+          <button class="tab-btn tab-inventory" data-tab="inventory">Inventory</button>
+          <button class="tab-btn tab-export" data-tab="export">Export</button>
+          <button class="tab-btn tab-logout" data-tab="logout">Logout</button>
         </nav>
 
         <!-- Members Tab -->
@@ -233,7 +234,7 @@
         </div>
 
         <!-- Church Giving Tab -->
-        <div id="giving" class="tab-content card">
+        <div id="giving-records" class="tab-content card">
           <h2>Church Giving</h2>
           <div class="form-section-header">
             <h3 style="margin: 0; flex: 1;">Record Church Giving</h3>
@@ -332,7 +333,7 @@
         </div>
 
         <!-- Project Giving Tab -->
-        <div id="project" class="tab-content card">
+        <div id="project-giving" class="tab-content card">
           <h2>Church Project Giving</h2>
           <div class="form-section-header">
             <h3 style="margin: 0; flex: 1;">Record Project Giving</h3>
@@ -573,7 +574,7 @@
         </div>
 
         <!-- Department Contribution Tab -->
-        <div id="department" class="tab-content card">
+        <div id="department-savings" class="tab-content card">
           <h2>Department Contribution</h2>
           <div class="form-section-header">
             <h3 style="margin: 0; flex: 1;">Record Department Contribution</h3>
@@ -662,14 +663,15 @@
             </label>
 
             <label>
-              Group
+              Group (choose one)
               <select id="group" required>
                 <option value="" disabled selected>Select a group</option>
                 <option value="Amani">Amani</option>
+                <option value="Macedonia">Macedonia</option>
                 <option value="Warriors of Christ">Warriors of Christ</option>
                 <option value="Jerusalem">Jerusalem</option>
                 <option value="Blessed Zion">Blessed Zion</option>
-                <option value="Macedonia">Macedonia</option>
+                <option value="All">All</option>
               </select>
             </label>
 
@@ -683,7 +685,7 @@
         </div>
 
         <!-- Data Backup Tab -->
-        <div id="backup" class="tab-content card">
+        <div id="export" class="tab-content card">
           <h2>Data Backup & Restore</h2>
           <p style="margin-bottom: 20px; color: var(--muted);">Export all your data to a file for backup, or import previously saved data.</p>
           
